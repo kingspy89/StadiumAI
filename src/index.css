@@ -5,6 +5,15 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+@layer utilities {
+  .perspective-container {
+    perspective: 1200px;
+  }
+  .transform-style-3d {
+    transform-style: preserve-3d;
+  }
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);

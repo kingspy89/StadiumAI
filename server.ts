@@ -48,11 +48,13 @@ if (botToken) {
       const generateMockResponse = (input: string, zones: any[]) => {
         const lowerInput = input.toLowerCase();
         let message = `Hello! I'm your StadiumAI Concierge. `;
+        let dest = '';
         
         if (lowerInput.includes('food') || lowerInput.includes('eat') || lowerInput.includes('hungry')) {
           const foodZones = zones.filter(z => z.type === 'food').sort((a,b) => a.density - b.density);
           if (foodZones.length > 0) {
-            message += `Based on live crowd data, the least crowded food area is ${foodZones[0].name} (only ${foodZones[0].density}% capacity). I recommend heading there!`;
+            dest = foodZones[0].name;
+            message += `Based on live crowd data, the least crowded food area is ${dest} (only ${foodZones[0].density}% capacity). I recommend heading there!`;
           } else {
             message += `Check out the food courts on the live map for the best options.`;
           }
@@ -60,7 +62,8 @@ if (botToken) {
         else if (lowerInput.includes('restroom') || lowerInput.includes('bathroom') || lowerInput.includes('toilet') || lowerInput.includes('washroom')) {
           const rrZones = zones.filter(z => z.type === 'restroom').sort((a,b) => a.density - b.density);
           if (rrZones.length > 0) {
-            message += `The least crowded restroom is at ${rrZones[0].name} (${rrZones[0].density}% capacity).`;
+            dest = rrZones[0].name;
+            message += `The least crowded restroom is at ${dest} (${rrZones[0].density}% capacity).`;
           } else {
              message += `Please check the live map for the nearest restroom with low congestion!`;
           }
@@ -68,7 +71,8 @@ if (botToken) {
         else if (lowerInput.includes('gate') || lowerInput.includes('enter') || lowerInput.includes('exit')) {
           const gateZones = zones.filter(z => z.type === 'gate').sort((a,b) => a.density - b.density);
           if (gateZones.length > 0) {
-             message += `For the fastest path, use ${gateZones[0].name} which currently has ${gateZones[0].density}% crowd density.`;
+             dest = gateZones[0].name;
+             message += `For the fastest path, use ${dest} which currently has ${gateZones[0].density}% crowd density.`;
           } else {
              message += `You can find the most open gates on the live map.`;
           }
@@ -76,6 +80,13 @@ if (botToken) {
         else {
           message += `I can help you find the least crowded restrooms, food stalls, and gates. Just ask me!`;
         }
+
+        if (dest) {
+          // Construct the navigation link
+          const appUrl = 'https://ais-pre-jbmuwftq4kxthod735k5gu-869592050378.asia-southeast1.run.app';
+          message += `\n\n🗺️ Live Navigation:\n${appUrl}/user?dest=${encodeURIComponent(dest)}`;
+        }
+
         return message;
       };
 
@@ -88,7 +99,11 @@ if (botToken) {
 LIVE STATUS:
 ${zonesStatus}
 
-Answer the user directly and concisely. If they ask about congestion, restroom, or food, check the LIVE STATUS and refer them to the least crowded option. Be friendly and helpful!`;
+Answer the user directly and concisely. If they ask about congestion, restroom, or food, check the LIVE STATUS and refer them to the least crowded option. Be friendly and helpful!
+
+IMPORTANT: If you recommend a specific zone, gate, food court, or restroom, YOU MUST append a Live Navigation link to your response in exactly this format:
+🗺️ Live Navigation:
+https://ais-pre-jbmuwftq4kxthod735k5gu-869592050378.asia-southeast1.run.app/user?dest=[URL_ENCODED_ZONE_NAME]`;
 
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
