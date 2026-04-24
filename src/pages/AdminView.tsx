@@ -22,9 +22,6 @@ export default function AdminView() {
           </h1>
         </div>
         <div className="flex items-center gap-4 md:gap-6">
-          <Link to="/cafe" className="text-sm text-emerald-400 hover:text-emerald-300">
-            Cafe Management
-          </Link>
           <div className="flex items-center gap-2 bg-neutral-900/80 px-3 py-1.5 border border-white/5 rounded-full">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
             <span className="text-[10px] md:text-xs font-semibold uppercase tracking-widest text-emerald-400">Sys Ok</span>

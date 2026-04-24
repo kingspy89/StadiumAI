@@ -22,21 +22,49 @@ try {
 
 // Telegram Bot Setup
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
+const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 let bot: TelegramBot | null = null;
+const activeChats = new Set<string | number>();
+
+if (adminChatId) {
+  activeChats.add(adminChatId);
+}
 
 if (botToken) {
   bot = new TelegramBot(botToken, { polling: true });
   console.log("🤖 Telegram Bot started polling");
 
   let zonesCache: any[] = [];
+  let previousZones: Record<string, number> = {};
+
   if (db) {
     onSnapshot(collection(db, 'zones'), (snap) => {
-      zonesCache = snap.docs.map(doc => doc.data());
+      const currentZones = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      
+      currentZones.forEach(zone => {
+         const oldDensity = previousZones[zone.id] || 0;
+         const newDensity = zone.density;
+         
+         // Trigger alert if density crosses 85% going upwards
+         if (newDensity > 85 && oldDensity <= 85) {
+            const msg = `🚨 EMERGENCY ALERT:\n${zone.name} is currently highly congested (${newDensity}% capacity). Try to avoid this area and transfer crowd to a less crowded location.`;
+            
+            // Broadcast to all known chats
+            activeChats.forEach(chatId => {
+               bot?.sendMessage(chatId, msg).catch(e => console.error("Failed to send alert to", chatId, e.message));
+            });
+         }
+         
+         previousZones[zone.id] = newDensity;
+      });
+
+      zonesCache = currentZones;
     });
   }
 
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
+    activeChats.add(chatId);
     const text = msg.text || '';
 
     // Typing action
