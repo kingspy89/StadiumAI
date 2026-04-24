@@ -1,0 +1,37 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitives
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidZone(data) {
+      return data.keys().hasAll(['name', 'density', 'type', 'x', 'y']) &&
+             data.keys().size() == 5 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.density is number && data.density >= 0 && data.density <= 100 &&
+             data.type in ['gate', 'food', 'seating', 'restroom'] &&
+             data.x is number && data.x >= 0 && data.x <= 100 &&
+             data.y is number && data.y >= 0 && data.y <= 100;
+    }
+
+    // Public zones - readable by anyone, writable by anybody (for the hackathon demo purposes, so admin can easily update)
+    // Actually, schema validation is required for write.
+    match /zones/{zoneId} {
+      // Anyone can read the live stadium density map
+      allow read: if true;
+      allow create: if isValidZone(incoming());
+      allow update: if incoming().diff(existing()).affectedKeys().hasOnly(['density']) 
+                    && incoming().density is number 
+                    && incoming().density >= 0 
+                    && incoming().density <= 100;
+      allow delete: if false;
+    }
+  }
+}

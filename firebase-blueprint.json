@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "Zone": {
+      "title": "Zone",
+      "description": "A live representation of a physical zone in the stadium, along with its current crowd density.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Zone name, e.g., Gate A" },
+        "density": { "type": "number", "description": "Density from 0 to 100" },
+        "type": { "type": "string", "enum": ["gate", "food", "seating", "restroom"] },
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "required": ["name", "density", "type", "x", "y"]
+    }
+  },
+  "firestore": {
+    "/zones/{zoneId}": {
+      "schema": { "$ref": "#/entities/Zone" },
+      "description": "Stores the latest crowd density metrics for all monitored zones."
+    }
+  }
+}
