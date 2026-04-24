@@ -30,7 +30,7 @@ export default function AdminView() {
             <span className="text-[10px] md:text-xs font-semibold uppercase tracking-widest text-emerald-400">Sys Ok</span>
           </div>
           <div className="px-4 py-1.5 bg-neutral-900 border border-neutral-800 rounded-md text-xs hidden sm:block">
-            <span className="text-neutral-500">VENUE:</span> WANKHEDE
+            <span className="text-neutral-500">VENUE:</span> NARENDRA MODI STADIUM
           </div>
         </div>
       </header>
