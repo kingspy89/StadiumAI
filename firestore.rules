@@ -16,7 +16,7 @@ service cloud.firestore {
              data.keys().size() == 5 &&
              data.name is string && data.name.size() <= 100 &&
              data.density is number && data.density >= 0 && data.density <= 100 &&
-             data.type in ['gate', 'food', 'seating', 'restroom'] &&
+             data.type in ['gate', 'food', 'seating', 'restroom', 'parking'] &&
              data.x is number && data.x >= 0 && data.x <= 100 &&
              data.y is number && data.y >= 0 && data.y <= 100;
     }
@@ -32,6 +32,10 @@ service cloud.firestore {
                     && incoming().density >= 0 
                     && incoming().density <= 100;
       allow delete: if false;
+    }
+
+    match /system_logs/{logId} {
+      allow read, write: if true;
     }
   }
 }

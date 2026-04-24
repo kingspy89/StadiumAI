@@ -4,7 +4,7 @@ import ChatInterface from './components/ChatInterface';
 import AgentLogs from './components/AgentLogs';
 import { Shield } from 'lucide-react';
 import AdminPanel from './components/AdminPanel';
-import MatchOverview from './components/MatchOverview';
+import VenueStatus from './components/VenueStatus';
 import AgentHealth from './components/AgentHealth';
 
 export default function App() {
@@ -37,7 +37,7 @@ export default function App() {
         {/* Left Column (3/12) - Context & Status */}
         <div className="lg:col-span-3 flex flex-col gap-4 overflow-hidden h-full">
           <div className="bg-neutral-900 border border-neutral-800 rounded-3xl shrink-0">
-            <MatchOverview />
+            <VenueStatus />
           </div>
           <div className="bg-neutral-900 border border-neutral-800 rounded-3xl shrink-0">
             <AgentHealth />

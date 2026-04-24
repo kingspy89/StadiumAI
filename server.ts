@@ -56,10 +56,10 @@ Answer the user directly and concisely. If they ask about congestion, restroom, 
 
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
-          contents: [
-            { role: 'user', parts: [{ text: systemPrompt }] },
-            { role: 'user', parts: [{ text: text }] }
-          ]
+          contents: text,
+          config: {
+            systemInstruction: systemPrompt
+          }
         });
 
         // Add a log to Firebase if possible
@@ -77,9 +77,9 @@ Answer the user directly and concisely. If they ask about congestion, restroom, 
       } else {
         bot?.sendMessage(chatId, "I'm alive, but my AI brain (Gemini API Key) is offline.");
       }
-    } catch (e) {
-      console.error(e);
-      bot?.sendMessage(chatId, "Error processing your request.");
+    } catch (e: any) {
+      console.error("TELEGRAM BOT ERROR:", e);
+      bot?.sendMessage(chatId, `Error processing your request: ${e.message}`);
     }
   });
 } else {

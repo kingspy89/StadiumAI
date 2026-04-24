@@ -20,6 +20,8 @@ const initialZones: Zone[] = [
   { id: 'f2', name: 'Snacks South', density: 40, type: 'food', x: 75, y: 40 },
   { id: 's1', name: 'Stand V1', density: 60, type: 'seating', x: 50, y: 80 },
   { id: 'r1', name: 'Restrooms W', density: 75, type: 'restroom', x: 15, y: 65 },
+  { id: 'p1', name: 'North Parking', density: 85, type: 'parking', x: 10, y: 10 },
+  { id: 'p2', name: 'South Parking', density: 30, type: 'parking', x: 90, y: 10 },
 ];
 
 export default function AdminPanel() {
@@ -45,6 +47,24 @@ export default function AdminPanel() {
       } else {
         const fetchedZones = snap.docs.map(d => ({ id: d.id, ...d.data() } as Zone));
         setZones(fetchedZones.sort((a,b) => a.name.localeCompare(b.name)));
+        
+        // Add missing parking zones if they don't exist yet
+        const hasParkingNorth = fetchedZones.some(z => z.id === 'p1');
+        const hasParkingSouth = fetchedZones.some(z => z.id === 'p2');
+        if (!hasParkingNorth) {
+          const p1 = initialZones.find(z => z.id === 'p1');
+          if (p1) {
+            const { id, ...rest } = p1;
+            setDoc(doc(db, 'zones', p1.id), rest);
+          }
+        }
+        if (!hasParkingSouth) {
+          const p2 = initialZones.find(z => z.id === 'p2');
+          if (p2) {
+            const { id, ...rest } = p2;
+            setDoc(doc(db, 'zones', p2.id), rest);
+          }
+        }
       }
       setLoading(false);
     });
