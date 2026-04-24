@@ -44,38 +44,43 @@ if (botToken) {
 
     try {
       const gKey = process.env.GEMINI_API_KEY;
-      if (gKey) {
-        const ai = new GoogleGenAI({ apiKey: gKey });
-        const zonesStatus = zonesCache.map(z => `- ${z.name}: ${z.density}% capacity`).join('\n');
-        
-        const systemPrompt = `You are StadiumAI Bot, an advanced AI concierge on Telegram. You assist users inside the stadium.
+      if (gKey && gKey.length > 10) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: gKey });
+          const zonesStatus = zonesCache.map(z => `- ${z.name}: ${z.density}% capacity`).join('\n');
+          
+          const systemPrompt = `You are StadiumAI Bot, an advanced AI concierge on Telegram. You assist users inside the stadium.
 LIVE STATUS:
 ${zonesStatus}
 
 Answer the user directly and concisely. If they ask about congestion, restroom, or food, check the LIVE STATUS and refer them to the least crowded option. Be friendly and helpful!`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: text,
-          config: {
-            systemInstruction: systemPrompt
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: text,
+            config: {
+              systemInstruction: systemPrompt
+            }
+          });
+
+          // Add a log to Firebase if possible
+          if (db) {
+             await addDoc(collection(db, 'system_logs'), {
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                agent: 'Attendee Assistant',
+                level: 'action',
+                message: `Telegram user asked: "${text.substring(0,20)}...". Replied with directions.`,
+                createdAt: Date.now()
+             });
           }
-        });
 
-        // Add a log to Firebase if possible
-        if (db) {
-           await addDoc(collection(db, 'system_logs'), {
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              agent: 'Attendee Assistant',
-              level: 'action',
-              message: `Telegram user asked: "${text.substring(0,20)}...". Replied with directions.`,
-              createdAt: Date.now()
-           });
+          bot?.sendMessage(chatId, response.text || "I'm having trouble thinking right now.");
+        } catch (apiError: any) {
+          console.error("Gemini API Error:", apiError.message);
+          bot?.sendMessage(chatId, "Hi! I am the StadiumAI concierge. (Demo mode: live AI responses are temporarily offline). Check the live map on the app for crowd levels!");
         }
-
-        bot?.sendMessage(chatId, response.text || "I'm having trouble thinking right now.");
       } else {
-        bot?.sendMessage(chatId, "I'm alive, but my AI brain (Gemini API Key) is offline.");
+        bot?.sendMessage(chatId, "I'm alive, but my AI brain (Gemini API Key) is offline. Check the live map on the app!");
       }
     } catch (e: any) {
       console.error("TELEGRAM BOT ERROR:", e);

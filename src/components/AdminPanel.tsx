@@ -115,43 +115,49 @@ export default function AdminPanel() {
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const base64String = (reader.result as string).split(',')[1];
-        
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    data: base64String,
-                    mimeType: file.type
-                  }
-                },
-                { text: 'You are a Vision AI crowd density estimator. Analyze the crowd in this image and estimate the density as a percentage from 0 to 100. 0 means completely empty, 100 means dangerously packed. Return ONLY an integer number between 0 and 100.' }
-              ]
-            }
-          ]
-        });
+        try {
+          const base64String = (reader.result as string).split(',')[1];
+          
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    inlineData: {
+                      data: base64String,
+                      mimeType: file.type
+                    }
+                  },
+                  { text: 'You are a Vision AI crowd density estimator. Analyze the crowd in this image and estimate the density as a percentage from 0 to 100. 0 means completely empty, 100 means dangerously packed. Return ONLY an integer number between 0 and 100.' }
+                ]
+              }
+            ]
+          });
 
-        const numText = response.text?.match(/\d+/)?.[0];
-        if (numText) {
-          let density = parseInt(numText);
-          density = Math.max(0, Math.min(100, density));
-          await updateDensity(selectedZone, density, true);
-        } else {
-          if (z) await createLog('Vision/Heatmap', 'warn', `Vision AI failed to get density for ${z.name}.`);
+          const numText = response.text?.match(/\d+/)?.[0];
+          if (numText) {
+            let density = parseInt(numText);
+            density = Math.max(0, Math.min(100, density));
+            await updateDensity(selectedZone, density, true);
+          } else {
+            if (z) await createLog('Vision/Heatmap', 'warn', `Vision AI failed to get density for ${z.name}.`);
+          }
+        } catch (apiErr) {
+          console.error("Vision AI Error:", apiErr);
+          if (z) await createLog('Vision/Heatmap', 'warn', `Vision AI error for ${z.name}. (API key may be invalid).`);
+        } finally {
+          setAnalyzingMode(null);
+          setSelectedZone(null);
+          if (fileInputRef.current) fileInputRef.current.value = '';
         }
-        setAnalyzingMode(null);
-        setSelectedZone(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.readAsDataURL(file);
     } catch (err) {
       console.error(err);
-      if (z) await createLog('Vision/Heatmap', 'warn', `Vision AI error for ${z.name}.`);
+      if (z) await createLog('Vision/Heatmap', 'warn', `Vision AI file read error for ${z.name}.`);
       setAnalyzingMode(null);
       setSelectedZone(null);
     }
