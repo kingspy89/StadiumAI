@@ -11,6 +11,8 @@ interface Zone {
   type: string;
   x: number;
   y: number;
+  emergencyMsg?: string | null;
+  aiSuggestion?: string | null;
 }
 
 const initialZones: Zone[] = [
@@ -119,9 +121,9 @@ export default function AdminPanel() {
         try {
           const base64String = (reader.result as string).split(',')[1];
           
-          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
           const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash',
             contents: [
               {
                 role: 'user',
@@ -234,20 +236,40 @@ export default function AdminPanel() {
               </div>
             </div>
             {zone.emergencyMsg && (
-              <div className="mt-3 bg-rose-950 px-3 py-2 rounded-lg border border-rose-500/30 w-full flex justify-between items-center">
-                <div className="text-xs text-rose-200 flex-1 pr-2">
-                   <strong className="block text-rose-400 mb-0.5">ALERT</strong>
-                   {zone.emergencyMsg}
+              <div className="mt-3 bg-rose-950 px-3 py-2 rounded-lg border border-rose-500/30 w-full flex flex-col gap-2">
+                <div className="flex justify-between items-start">
+                  <div className="text-xs text-rose-200 flex-1 pr-2">
+                     <strong className="block text-rose-400 mb-0.5">ALERT</strong>
+                     {zone.emergencyMsg}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    {zone.aiSuggestion && (
+                      <button
+                        onClick={async () => {
+                           await createLog('Admin', 'action', `Executed AI Suggestion for ${zone.name}: ${zone.aiSuggestion}`);
+                           await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
+                        }}
+                        className="bg-indigo-900 border border-indigo-700 text-indigo-300 px-3 py-1 rounded text-[10px] uppercase font-bold tracking-wider hover:bg-indigo-800 transition-colors"
+                      >
+                        Execute
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                         await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
+                         await createLog('Admin', 'action', `Resolved emergency at ${zone.name}.`);
+                      }}
+                      className="bg-neutral-900 border border-neutral-700 text-neutral-300 px-3 py-1 rounded text-[10px] uppercase font-bold tracking-wider hover:bg-neutral-800 transition-colors"
+                    >
+                      Resolve
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={async () => {
-                     await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
-                     await createLog('Admin', 'action', `Resolved emergency at ${zone.name}.`);
-                  }}
-                  className="bg-neutral-900 border border-neutral-700 text-neutral-300 px-3 py-1 rounded text-[10px] uppercase font-bold tracking-wider hover:bg-neutral-800 transition-colors"
-                >
-                  Resolve
-                </button>
+                {zone.aiSuggestion && (
+                  <div className="text-xs text-amber-200 bg-amber-950/40 p-2 rounded border border-amber-500/30">
+                    <strong className="text-amber-400">💡 AI Suggestion:</strong> {zone.aiSuggestion}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -1,5 +1,4 @@
 import express from 'express';
-import 'dotenv/config';
 import { createServer as createViteServer } from 'vite';
 import TelegramBot from 'node-telegram-bot-api';
 import { initializeApp } from 'firebase/app';
@@ -8,7 +7,95 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 
-// Firebase Setup
+async function callAI(text: string, base64Image?: string) {
+  const gKey = process.env.GEMINI_API_KEY?.trim();
+  const groqKey = process.env.GROQ_API_KEY?.trim();
+  let grokError = '';
+  
+  const systemInstruction = `Analyze this crowd/volunteer update. Output ONLY a valid JSON object with EXACTLY these keys: "density" (number 0-100, guess if vague), "emergency" (boolean, true if dangerous or requires action like redirect), "summary" (short clear summary), "suggestion" (if action needed, provide a short actionable command like 'Transfer crowd to Gate B', else ''). NO Markdown formatting, NO backticks. ONLY valid JSON.`;
+
+  // Try Groq first if available
+  if (groqKey) {
+    try {
+      let messages: any[] = [
+        { role: 'system', content: systemInstruction }
+      ];
+      
+      let model = 'llama-3.3-70b-versatile';
+      
+      if (base64Image) {
+        model = 'llama-3.2-11b-vision-preview';
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+            { type: 'text', text: text || 'Analyze this image.' }
+          ]
+        });
+      } else {
+        messages.push({
+          role: 'user',
+          content: text || 'Analyze this situation.'
+        });
+      }
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.1,
+          response_format: { type: "json_object" }
+        })
+      });
+      
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Groq API error: ${res.status} - ${errText}`);
+      }
+      const data = await res.json();
+      return data.choices[0].message.content;
+    } catch (e: any) {
+      grokError = e.message;
+      console.error("Groq failed, falling back if possible:", grokError);
+    }
+  }
+
+  // Fallback to Gemini
+  if (gKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: gKey });
+      let contents: any[] = [];
+      if (base64Image) {
+        contents.push({ role: 'user', parts: [
+          text ? { text } : { text: "Analyze this image." },
+          { inlineData: { data: base64Image, mimeType: 'image/jpeg' }} 
+        ]});
+      } else {
+        contents.push({ role: 'user', parts: [{ text: text || "Analyze this situation." }] });
+      }
+      
+      const aiRes = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json"
+        }
+      });
+      return aiRes.text;
+    } catch(e: any) {
+      const geminiError = e.message;
+      throw new Error((grokError ? `Groq Error: ${grokError} | ` : '') + `Gemini Error: ${geminiError}`);
+    }
+  }
+  
+  throw new Error("No valid AI API keys provided (GROQ_API_KEY or GEMINI_API_KEY)." + (grokError ? ` Groq Error: ${grokError}` : ''));
+}
 let db: any = null;
 try {
   if (fs.existsSync('./firebase-applet-config.json')) {
@@ -220,10 +307,12 @@ if (botToken) {
 
     bot?.sendChatAction(chatId, 'typing');
 
-    // Process Broadcasts and AI Estimation
+      // Process Broadcasts and AI Estimation
     try {
-      const gKey = process.env.GEMINI_API_KEY;
-      console.log("TELEGRAM DIAGNOSTIC: gKey is", typeof gKey, gKey === undefined ? 'undefined' : (gKey!.length > 0 ? Array.from(gKey!).map((c, i) => i < 4 ? c : '*').join('') : 'empty string'));
+      const gKey = process.env.GEMINI_API_KEY?.trim();
+      const groqKey = process.env.GROQ_API_KEY?.trim();
+      const hasAIOutput = !!(gKey || groqKey);
+      
       const senderId = senderData.id;
       const zoneName = senderData.zone;
       const zoneId = senderData.zoneId;
@@ -234,10 +323,8 @@ if (botToken) {
 
       const isManualEmergency = userStates[chatId] === 'AWAITING_EMERGENCY';
 
-      if (gKey && bot) {
+      if (hasAIOutput && bot) {
          try {
-            const ai = new GoogleGenAI({ apiKey: gKey });
-            
             if (msg.photo && msg.photo.length > 0) {
                const photo = msg.photo[msg.photo.length - 1]; 
                const fileLink = await bot.getFileLink(photo.file_id);
@@ -245,20 +332,8 @@ if (botToken) {
                const arrayBuffer = await response.arrayBuffer();
                const base64Data = Buffer.from(arrayBuffer).toString('base64');
                
-               const aiRes = await ai.models.generateContent({
-                  model: 'gemini-1.5-flash',
-                  contents: [
-                     { role: 'user', parts: [
-                        { inlineData: { data: base64Data, mimeType: 'image/jpeg' }} 
-                     ]}
-                  ],
-                  config: {
-                     systemInstruction: `Analyze this crowd image. Output ONLY a valid JSON object with EXACTLY these keys: "density" (number 0-100), "emergency" (boolean, true if dangerous or requires action like redirect), "summary" (short description), "suggestion" (if action needed, provide a short actionable command like 'Transfer crowd to Gate B', else ''). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
-                     responseMimeType: "application/json"
-                  }
-               });
-               
-               let textVal = aiRes.text?.trim() || "{}";
+               const aiResponseText = await callAI(text || '', base64Data);
+               let textVal = aiResponseText?.trim() || "{}";
                const jsonMatch = textVal.match(/\{[\s\S]*\}/);
                if (jsonMatch) textVal = jsonMatch[0];
                
@@ -281,18 +356,8 @@ if (botToken) {
                
                updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n🤖 AI Vision: ${parsed.summary}\n📊 Crowd Density: ${parsed.density}%${parsed.suggestion ? `\n💡 Action: ${parsed.suggestion}` : ''}`;
             } else if (text) {
-               const aiRes = await ai.models.generateContent({
-                  model: 'gemini-1.5-flash',
-                  contents: [
-                     { role: 'user', parts: [ { text: text } ] }
-                  ],
-                  config: {
-                     systemInstruction: `Analyze this volunteer update. Output ONLY JSON with EXACTLY: "density" (number 0-100, guess if vague, e.g. "empty" = 10, "full" or "packed" = 100), "emergency" (boolean, true if dangerous or requires action like redirect), "summary" (rephrased clear summary), "suggestion" (if action needed, provide a short actionable command like 'Transfer crowd to Gate B', else ''). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
-                     responseMimeType: "application/json"
-                  }
-               });
-               
-               let textVal = aiRes.text?.trim() || "{}";
+               const aiResponseText = await callAI(text);
+               let textVal = aiResponseText?.trim() || "{}";
                const jsonMatch = textVal.match(/\{[\s\S]*\}/);
                if (jsonMatch) textVal = jsonMatch[0];
                
@@ -317,9 +382,9 @@ if (botToken) {
             }
          } catch(e: any) {
             console.error("AI processing error:", e);
-            // Fallback
+            // Fallback to non-AI implementation inside the fallback logic
             if (msg.photo && msg.photo.length > 0) {
-               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a photo - Error: ${e.message})`;
+               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a photo - AI unavailable)`;
                isEmergency = isManualEmergency;
             } else if (text) {
                let fallbackDensity: number | undefined;
@@ -335,12 +400,36 @@ if (botToken) {
                   fallbackDensity = 0;
                }
 
+               let isEmergencyDetected = isManualEmergency || /(fire|stampede|fight|medical|help|emergency|urgent)/i.test(text);
+               let fallbackSuggestion = '';
+               if (isEmergencyDetected) {
+                  if (/(fire|smoke)/i.test(text)) fallbackSuggestion = 'Evacuate area immediately and call fire department.';
+                  else if (/(medical|injur|hurt)/i.test(text)) fallbackSuggestion = 'Dispatch medical team to location.';
+                  else if (/(fight|stampede|crowd)/i.test(text)) fallbackSuggestion = 'Dispatch security to control crowd.';
+                  else fallbackSuggestion = 'Investigate situation immediately.';
+               }
+
+               const errMsg = e instanceof Error ? e.message : String(e);
+               
+               if (db && zoneId) {
+                  const updatePayload: any = {};
+                  if (fallbackDensity !== undefined) updatePayload.density = Math.max(0, Math.min(100, Number(fallbackDensity)));
+                  if (isEmergencyDetected) {
+                     updatePayload.emergencyMsg = `Emergency reported: ${text}`;
+                     updatePayload.aiSuggestion = `[Fallback - AI Error: ${errMsg}] ${fallbackSuggestion}`;
+                  } else {
+                     updatePayload.emergencyMsg = null;
+                     updatePayload.aiSuggestion = null;
+                  }
+                  await updateDoc(doc(db, 'zones', zoneId), updatePayload);
+               }
+
                if (fallbackDensity !== undefined) {
                   densityLog = fallbackDensity;
-                  if (db && zoneId) await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(fallbackDensity))) });
                }
-               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}\n(Error: ${e.message})`;
-               isEmergency = isManualEmergency;
+               
+               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}`;
+               isEmergency = isEmergencyDetected;
             }
          }
       } else {
@@ -363,12 +452,35 @@ if (botToken) {
                fallbackDensity = 0;
             }
 
+            let isEmergencyDetected = isManualEmergency || /(fire|stampede|fight|medical|help|emergency|urgent)/i.test(text);
+            let fallbackSuggestion = '';
+            if (isEmergencyDetected) {
+               if (/(fire|smoke)/i.test(text)) fallbackSuggestion = 'Evacuate area immediately and call fire department.';
+               else if (/(medical|injur|hurt)/i.test(text)) fallbackSuggestion = 'Dispatch medical team to location.';
+               else if (/(fight|stampede|crowd)/i.test(text)) fallbackSuggestion = 'Dispatch security to control crowd.';
+               else fallbackSuggestion = 'Investigate situation immediately.';
+            }
+
+            const errMsg = e instanceof Error ? e.message : String(e);
+            
+            if (db && zoneId) {
+               const updatePayload: any = {};
+               if (fallbackDensity !== undefined) updatePayload.density = Math.max(0, Math.min(100, Number(fallbackDensity)));
+               if (isEmergencyDetected) {
+                  updatePayload.emergencyMsg = `Emergency reported: ${text}`;
+                  updatePayload.aiSuggestion = `[Fallback - AI Error: ${errMsg}] ${fallbackSuggestion}`;
+               } else {
+                  updatePayload.emergencyMsg = null;
+                  updatePayload.aiSuggestion = null;
+               }
+               await updateDoc(doc(db, 'zones', zoneId), updatePayload);
+            }
+
             if (fallbackDensity !== undefined) {
                densityLog = fallbackDensity;
-               if (db && zoneId) await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(fallbackDensity))) });
             }
             updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}`;
-            isEmergency = isManualEmergency;
+            isEmergency = isEmergencyDetected;
          }
       }
 

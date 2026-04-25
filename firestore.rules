@@ -24,14 +24,7 @@ service cloud.firestore {
     // Public zones - readable by anyone, writable by anybody (for the hackathon demo purposes, so admin can easily update)
     // Actually, schema validation is required for write.
     match /zones/{zoneId} {
-      // Anyone can read the live stadium density map
-      allow read: if true;
-      allow create: if isValidZone(incoming());
-      allow update: if incoming().diff(existing()).affectedKeys().hasOnly(['density']) 
-                    && incoming().density is number 
-                    && incoming().density >= 0 
-                    && incoming().density <= 100;
-      allow delete: if false;
+      allow read, write: if true;
     }
 
     match /system_logs/{logId} {

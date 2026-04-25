@@ -18,7 +18,7 @@ interface Zone {
   density: number;
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
@@ -85,7 +85,7 @@ When asked a question, provide direct, helpful advice based strictly on this liv
       }
       
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: [
           { role: 'user', parts: [{ text: venueContext + "\n\nUser Question: " + userText }] }
         ]

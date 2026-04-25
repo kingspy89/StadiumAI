@@ -12,14 +12,7 @@ interface Zone {
 
 export default function VenueStatus() {
   const [zones, setZones] = useState<Zone[]>([]);
-  const calculateAttendees = (zoneList: Zone[]) => {
-    if (zoneList.length === 0) return 14250; // Reasonable fallback
-    const avgDensity = zoneList.reduce((acc, z) => acc + z.density, 0) / zoneList.length;
-    const maxCapacity = 33000;
-    return Math.floor((avgDensity / 100) * maxCapacity);
-  };
-
-  const [totalAttendees, setTotalAttendees] = useState(() => calculateAttendees([]));
+  const [totalAttendees, setTotalAttendees] = useState(0);
   const [volunteerCount, setVolunteerCount] = useState(0);
 
   useEffect(() => {
@@ -27,7 +20,11 @@ export default function VenueStatus() {
       if (!snap.empty) {
         const fetchedZones = snap.docs.map(d => ({ id: d.id, ...d.data() } as Zone));
         setZones(fetchedZones);
-        setTotalAttendees(calculateAttendees(fetchedZones));
+        
+        // Mock a total attendee calculation based on zone density
+        const avgDensity = fetchedZones.reduce((acc, z) => acc + z.density, 0) / (fetchedZones.length || 1);
+        const maxCapacity = 33000; // Wankhede capacity
+        setTotalAttendees(Math.floor((avgDensity / 100) * maxCapacity));
       }
     });
 
