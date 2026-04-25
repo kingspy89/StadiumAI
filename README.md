@@ -44,6 +44,7 @@ StadiumAI introduces a **real-time AI operations system**:
 
 👉 [@StadiumAI_aplbot](https://t.me/StadiumAI_aplbot)
 
+
 ### What volunteers can do:
 - Register with ID + zone
 - Send updates (text/photo)
@@ -55,7 +56,7 @@ StadiumAI introduces a **real-time AI operations system**:
 
 ## 🔥 Key Features
 
-### 📊 Real-time Command Dashboard
+### 📊 Real-time Command Dashboard  (https://stadiumai-1001460310030.us-central1.run.app)
 - Live crowd heatmap
 - Emergency alerts with AI suggestions
 - Volunteer activity timeline
