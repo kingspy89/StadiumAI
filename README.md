@@ -9,7 +9,73 @@ StadiumAI combines a real-time control dashboard, Telegram bot operations, and A
 During large events, crowd incidents escalate in seconds.
 
 Traditional reporting is slow:
-- Volunteers send unstructured messages
+- Volunteers send unstructured messages# 🏟️ StadiumAI
+
+> AI-powered crowd safety & volunteer coordination platform for large-scale stadium events.
+
+StadiumAI transforms chaotic, unstructured crowd updates into **real-time, AI-guided actions**, enabling faster decisions, safer movement, and coordinated emergency response.
+
+---
+
+## ⚡ Problem
+
+During large events, incidents escalate within seconds — but response systems are slow.
+
+- Volunteers send unstructured updates
+- Control rooms struggle to prioritize signals
+- Broadcast communication is delayed
+
+➡️ Result: **Delayed response = Higher risk**
+
+---
+
+## 💡 Solution
+
+StadiumAI introduces a **real-time AI operations system**:
+
+- 🧠 AI analyzes text & image inputs instantly  
+- 📊 Dashboard reflects live crowd conditions  
+- 📡 Telegram bot enables field-level communication  
+- 🚨 Automated alerts + action recommendations  
+
+---
+
+## 🤖 Live Telegram Bot
+
+👉 [@StadiumAI_aplbot](https://t.me/StadiumAI_aplbot)
+
+### What volunteers can do:
+- Register with ID + zone
+- Send updates (text/photo)
+- Trigger emergency broadcast
+- Get live crowd insights
+- Sign out after shift
+
+---
+
+## 🔥 Key Features
+
+### 📊 Real-time Command Dashboard
+- Live crowd heatmap
+- Emergency alerts with AI suggestions
+- Volunteer activity timeline
+- System monitoring panel
+
+---
+
+### 📡 Telegram-first Workflow
+- Guided onboarding (`/start`)
+- Instant updates & broadcasts
+- High-density alerts (>85%)
+
+---
+
+### 🧠 AI Incident Intelligence
+- Detects:
+  - Crowd density
+  - Emergencies
+  - Situational summaries
+- Outputs structured response:
 - Control rooms struggle to validate and prioritize updates
 - Broadcasts to all responders are delayed
 
