@@ -80,7 +80,7 @@ ${zonesStatus}
 When asked a question, provide direct, helpful advice based strictly on this live data. If they ask about Food or Restrooms, steer them to the option with the lowest crowd percentage. If they ask about entering, tell them the Gate with the lowest crowd. Act like an autonomous agent connected to the stadium's live CCTV feeds. KEEP RESPONSES SHORT AND PUNCHY like a Telegram message.`;
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
+      if (!import.meta.env.VITE_GEMINI_API_KEY) {
         throw new Error("No API key");
       }
       

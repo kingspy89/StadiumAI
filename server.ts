@@ -7,8 +7,6 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 
-import admin from 'firebase-admin';
-
 async function callAI(text: string, base64Image?: string) {
   const gKey = process.env.GEMINI_API_KEY?.trim();
   const groqKey = process.env.GROQ_API_KEY?.trim();
@@ -98,26 +96,16 @@ async function callAI(text: string, base64Image?: string) {
   
   throw new Error("No valid AI API keys provided (GROQ_API_KEY or GEMINI_API_KEY)." + (grokError ? ` Groq Error: ${grokError}` : ''));
 }
-
-// Firebase Setup
 let db: any = null;
 try {
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    db = admin.firestore();
-    console.log("🔥 Firebase Admin initialized with service account file");
-  } else {
-    // Fallback to Google Application Default Credentials (e.g. for Cloud Run)
-    admin.initializeApp();
-    db = admin.firestore();
-    console.log("🔥 Firebase Admin initialized with Application Default Credentials");
+  if (fs.existsSync('./firebase-applet-config.json')) {
+    const config = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+    const app = initializeApp(config);
+    db = getFirestore(app, config.firestoreDatabaseId);
+    console.log("🔥 Firebase initialized in server");
   }
 } catch (e) {
-  console.error('Firebase Admin initialization error:', e);
+  console.log("Firebase config not found or invalid on server.");
 }
 
 // Telegram Bot Setup
@@ -143,12 +131,12 @@ if (botToken) {
 
   if (db) {
     // Fetch registered volunteers on boot
-    db.collection('telegram_users').get().then((snap: any) => {
-       snap.forEach((d: any) => { activeVolunteers[d.id] = d.data(); });
-    }).catch((e: any) => console.log("Failed to fetch past volunteers"));
+    getDocs(collection(db, 'telegram_users')).then(snap => {
+       snap.forEach(d => { activeVolunteers[d.id] = d.data() as any; });
+    }).catch(e => console.log("Failed to fetch past volunteers"));
 
-    db.collection('zones').onSnapshot((snap: any) => {
-      const currentZones = snap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+    onSnapshot(collection(db, 'zones'), (snap) => {
+      const currentZones = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       currentZones.forEach(zone => {
          const oldDensity = previousZones[zone.id] || 0;
          const newDensity = zone.density;
@@ -162,8 +150,8 @@ if (botToken) {
       });
     });
 
-    db.collection('broadcast_messages').onSnapshot((snap: any) => {
-       snap.docChanges().forEach((change: any) => {
+    onSnapshot(collection(db, 'broadcast_messages'), (snap) => {
+       snap.docChanges().forEach(change => {
           if (change.type === 'added') {
              const data = change.doc.data();
              if (Date.now() - data.createdAt < 120000) { // Only send if it was created in the last 2 minutes
@@ -203,7 +191,7 @@ if (botToken) {
           delete activeVolunteers[chatId];
        }
        if (db) {
-          try { await db.collection('telegram_users').doc(chatId).delete(); } catch(e){}
+          try { await deleteDoc(doc(db, 'telegram_users', chatId)); } catch(e){}
        }
        userStates[chatId] = '';
        bot?.sendMessage(chatId, `👋 You have signed out successfully! You will no longer receive updates. Send /start to volunteer again.`, {
@@ -244,19 +232,15 @@ if (botToken) {
        userStates[chatId] = 'REGISTERED';
        
        if (db) {
-            try {
-            await db.collection('telegram_users').doc(chatId).set(userData);
-        } catch (e: any) {
-            console.warn('Failed to set telegram user:', e.message);
-        } 
+          try { await setDoc(doc(db, 'telegram_users', chatId), userData); } catch(e: any){ console.error("Firebase error saving user:", e.message) }
        }
        
        // Send Live Crowd Data
        let crowdSummary = `📊 *LIVE STADIUM STATUS*\n\n`;
        if (db) {
           try {
-             const snap = await db.collection('zones').get();
-             const zonesList = snap.docs.map((doc: any) => ({ name: doc.data().name, density: doc.data().density }));
+             const snap = await getDocs(collection(db, 'zones'));
+             const zonesList = snap.docs.map(doc => ({ name: doc.data().name, density: doc.data().density }));
              zonesList.sort((a, b) => b.density - a.density);
              zonesList.forEach(z => {
                 const icon = z.density > 80 ? '🔴' : (z.density > 50 ? '🟡' : '🟢');
@@ -367,11 +351,7 @@ if (botToken) {
                       updatePayload.emergencyMsg = null;
                       updatePayload.aiSuggestion = null;
                    }
-                   try {
-                  await db.collection('zones').doc(zoneId).update(updatePayload);
-                } catch (e) {
-                  console.warn('Firestore update failed (AI block):', e.message);
-                }
+                   await updateDoc(doc(db, 'zones', zoneId), updatePayload);
                }
                
                updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n🤖 AI Vision: ${parsed.summary}\n📊 Crowd Density: ${parsed.density}%${parsed.suggestion ? `\n💡 Action: ${parsed.suggestion}` : ''}`;
@@ -395,11 +375,7 @@ if (botToken) {
                       updatePayload.emergencyMsg = null;
                       updatePayload.aiSuggestion = null;
                    }
-                   try {
-                  await db.collection('zones').doc(zoneId).update(updatePayload);
-                } catch (e) {
-                  console.warn('Firestore update failed (AI text block):', e.message);
-                }
+                   await updateDoc(doc(db, 'zones', zoneId), updatePayload);
                }
                
                updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}\n🤖 AI Translation: ${parsed.summary}\n📊 Dashboard updated to: ${parsed.density}%${parsed.suggestion ? `\n💡 Action: ${parsed.suggestion}` : ''}`;
@@ -407,27 +383,24 @@ if (botToken) {
          } catch(e: any) {
             console.error("AI processing error:", e);
             // Fallback to non-AI implementation inside the fallback logic
-            const textLower = (text || '').toLowerCase();
-            const emergencyKeywords = ['fire', 'emergency', 'evacuat', 'help', 'danger', 'accident', 'injury', 'hurt', 'critical', 'urgent', 'medical', 'fight', 'stampede', 'flood'];
-            const hasEmergencyKeyword = emergencyKeywords.some(kw => textLower.includes(kw));
-            isEmergency = isManualEmergency || hasEmergencyKeyword;
-
             if (msg.photo && msg.photo.length > 0) {
                updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a photo - AI unavailable)`;
+               isEmergency = isManualEmergency;
             } else if (text) {
                let fallbackDensity: number | undefined;
+               const textLower = text.toLowerCase();
                const match = text.match(/(\d+)\s*%/);
                if (match) {
                   fallbackDensity = parseInt(match[1]);
-               } else if (textLower.includes('packed') || textLower.includes('full') || textLower.includes('crowded') || textLower.includes('overflow')) {
-                  fallbackDensity = 90;
+               } else if (textLower.includes('packed') || textLower.includes('full') || textLower.includes('crowded')) {
+                  fallbackDensity = 100;
                } else if (textLower.includes('half') || textLower.includes('normal') || textLower.includes('medium')) {
                   fallbackDensity = 50;
-               } else if (textLower.includes('empty') || textLower.includes('clear') || textLower.includes('quiet')) {
-                  fallbackDensity = 10;
+               } else if (textLower.includes('empty') || textLower.includes('clear')) {
+                  fallbackDensity = 0;
                }
 
-               let isEmergencyDetected = isEmergency || /(fire|stampede|fight|medical|help|emergency|urgent)/i.test(text);
+               let isEmergencyDetected = isManualEmergency || /(fire|stampede|fight|medical|help|emergency|urgent)/i.test(text);
                let fallbackSuggestion = '';
                if (isEmergencyDetected) {
                   if (/(fire|smoke)/i.test(text)) fallbackSuggestion = 'Evacuate area immediately and call fire department.';
@@ -437,57 +410,49 @@ if (botToken) {
                }
 
                const errMsg = e instanceof Error ? e.message : String(e);
-               const updatePayload: any = {};
+               
+               if (db && zoneId) {
+                  const updatePayload: any = {};
+                  if (fallbackDensity !== undefined) updatePayload.density = Math.max(0, Math.min(100, Number(fallbackDensity)));
+                  if (isEmergencyDetected) {
+                     updatePayload.emergencyMsg = `Emergency reported: ${text}`;
+                     updatePayload.aiSuggestion = `[Fallback - AI Error: ${errMsg}] ${fallbackSuggestion}`;
+                  } else {
+                     updatePayload.emergencyMsg = null;
+                     updatePayload.aiSuggestion = null;
+                  }
+                  await updateDoc(doc(db, 'zones', zoneId), updatePayload);
+               }
+
                if (fallbackDensity !== undefined) {
                   densityLog = fallbackDensity;
-                  updatePayload.density = Math.max(0, Math.min(100, Number(fallbackDensity)));
                }
                
-               if (isEmergencyDetected) {
-                  updatePayload.emergencyMsg = `Emergency reported: ${text}`;
-                  updatePayload.aiSuggestion = `[Fallback - AI Error: ${errMsg}] ${fallbackSuggestion}`;
-               } else {
-                  updatePayload.emergencyMsg = null;
-                  updatePayload.aiSuggestion = null;
-               }
-
-               if (db && zoneId) {
-                  try {
-                     await db.collection('zones').doc(zoneId).update(updatePayload);
-                  } catch (e: any) {
-                     console.warn('Firestore update failed (fallback text block):', e.message);
-                  }
-               }
-
-               const emergencyTag = isEmergencyDetected ? '🚨 EMERGENCY DETECTED\n' : '';
-               updateMessage = `📋 [TEXT REPORT]\n${emergencyTag}Location: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}`;
+               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}`;
                isEmergency = isEmergencyDetected;
             }
          }
       } else {
-         // No AI key present fallback - keyword-based detection
-         const noAiTextLower = (text || '').toLowerCase();
-         const emergencyKws = ['fire', 'emergency', 'evacuat', 'help', 'danger', 'accident', 'injury', 'hurt', 'critical', 'urgent', 'medical', 'fight', 'stampede', 'flood'];
-         const hasEmergencyKw = emergencyKws.some(kw => noAiTextLower.includes(kw));
-         isEmergency = isManualEmergency || hasEmergencyKw;
-
+         // No AI key present fallback
          if (msg.photo && msg.photo.length > 0) {
-            updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(Photo received)`;
+            updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a photo)`;
+            isEmergency = isManualEmergency;
          } 
          else if (text) {
             let fallbackDensity: number | undefined;
+            const textLower = text.toLowerCase();
             const match = text.match(/(\d+)\s*%/);
             if (match) {
                fallbackDensity = parseInt(match[1]);
-            } else if (noAiTextLower.includes('packed') || noAiTextLower.includes('full') || noAiTextLower.includes('crowded') || noAiTextLower.includes('overflow')) {
-               fallbackDensity = 90;
-            } else if (noAiTextLower.includes('half') || noAiTextLower.includes('normal') || noAiTextLower.includes('medium')) {
+            } else if (textLower.includes('packed') || textLower.includes('full') || textLower.includes('crowded')) {
+               fallbackDensity = 100;
+            } else if (textLower.includes('half') || textLower.includes('normal') || textLower.includes('medium')) {
                fallbackDensity = 50;
-            } else if (noAiTextLower.includes('empty') || noAiTextLower.includes('clear') || noAiTextLower.includes('quiet')) {
-               fallbackDensity = 10;
+            } else if (textLower.includes('empty') || textLower.includes('clear')) {
+               fallbackDensity = 0;
             }
 
-            let isEmergencyDetected = isEmergency || /(fire|stampede|fight|medical|help|emergency|urgent)/i.test(text);
+            let isEmergencyDetected = isManualEmergency || /(fire|stampede|fight|medical|help|emergency|urgent)/i.test(text);
             let fallbackSuggestion = '';
             if (isEmergencyDetected) {
                if (/(fire|smoke)/i.test(text)) fallbackSuggestion = 'Evacuate area immediately and call fire department.';
@@ -497,30 +462,24 @@ if (botToken) {
             }
 
             const errMsg = "No AI API Key";
-            const noAiPayload: any = {};
+            
+            if (db && zoneId) {
+               const updatePayload: any = {};
+               if (fallbackDensity !== undefined) updatePayload.density = Math.max(0, Math.min(100, Number(fallbackDensity)));
+               if (isEmergencyDetected) {
+                  updatePayload.emergencyMsg = `Emergency reported: ${text}`;
+                  updatePayload.aiSuggestion = `[Fallback - AI Error: ${errMsg}] ${fallbackSuggestion}`;
+               } else {
+                  updatePayload.emergencyMsg = null;
+                  updatePayload.aiSuggestion = null;
+               }
+               await updateDoc(doc(db, 'zones', zoneId), updatePayload);
+            }
+
             if (fallbackDensity !== undefined) {
                densityLog = fallbackDensity;
-               noAiPayload.density = Math.max(0, Math.min(100, Number(fallbackDensity)));
             }
-            
-            if (isEmergencyDetected) {
-               noAiPayload.emergencyMsg = `Emergency reported: ${text}`;
-               noAiPayload.aiSuggestion = `[Fallback - AI Error: ${errMsg}] ${fallbackSuggestion}`;
-            } else {
-               noAiPayload.emergencyMsg = null;
-               noAiPayload.aiSuggestion = null;
-            }
-
-            if (db && zoneId && Object.keys(noAiPayload).length > 0) {
-                try {
-                  await db.collection('zones').doc(zoneId).update(noAiPayload);
-                } catch (e: any) {
-                  console.warn('Firestore update failed (fallback):', e.message);
-                }
-            }
-
-            const emergencyTagNoAi = isEmergencyDetected ? '🚨 EMERGENCY DETECTED\n' : '';
-            updateMessage = `📋 [TEXT REPORT]\n${emergencyTagNoAi}Location: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}`;
+            updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}`;
             isEmergency = isEmergencyDetected;
          }
       }
@@ -545,25 +504,23 @@ if (botToken) {
       let finalResponse = `✅ Update processed & dashboard updated. Alert broadcasted to ${sentCount} other volunteers.\n\n`;
       finalResponse += `📝 *Your Report Summary:*\n${updateMessage.replace(/\[.*\]\nLocation:.*\n/, '')}\n\n`;
       finalResponse += `📊 *UPDATED LIVE STADIUM STATUS*\n\n`;
-       // Build live stadium status for response
-       try {
-          if (db) {
-             const snap = await db.collection('zones').get();
-             const zonesList = snap.docs.map((doc: any) => ({ name: doc.data().name, id: doc.id, density: doc.data().density }));
-             const updatedZone = zonesList.find(z => z.id === zoneId);
-             if (updatedZone && densityLog !== undefined) {
-                updatedZone.density = Math.max(0, Math.min(100, Number(densityLog)));
-             }
-             zonesList.sort((a, b) => b.density - a.density);
-             zonesList.forEach(z => {
-                const icon = z.density > 80 ? '🔴' : (z.density > 50 ? '🟡' : '🟢');
-                finalResponse += `${icon} *${z.name}*: ${z.density}% crowd\n`;
-             });
-          }
-       } catch (e) {
-          console.warn('Failed to fetch zones for dashboard:', e.message);
-          finalResponse += '\n⚠️ Unable to retrieve live zone data.';
-       }
+      if (db) {
+         try {
+            const snap = await getDocs(collection(db, 'zones'));
+            const zonesList = snap.docs.map(doc => ({ name: doc.data().name, id: doc.id, density: doc.data().density }));
+            
+            const updatedZone = zonesList.find(z => z.id === zoneId);
+            if (updatedZone && densityLog !== undefined) {
+               updatedZone.density = Math.max(0, Math.min(100, Number(densityLog)));
+            }
+
+            zonesList.sort((a, b) => b.density - a.density);
+            zonesList.forEach(z => {
+               const icon = z.density > 80 ? '🔴' : (z.density > 50 ? '🟡' : '🟢');
+               finalResponse += `${icon} *${z.name}*: ${z.density}% crowd\n`;
+            });
+         } catch(e) {}
+      }
 
       bot?.sendMessage(chatId, finalResponse, { parse_mode: 'Markdown' });
       
@@ -572,17 +529,13 @@ if (botToken) {
 
       // 2. Update Dashboard Logs
       if (db) {
-         try {
-            await db.collection('system_logs').add({
-               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-               agent: `Vol: ${senderId} (${zoneName})`,
-               level: isEmergency ? 'error' : (densityLog > 80 ? 'warn' : 'info'),
-               message: updateMessage.replace(/\*/g, '').split('\n').filter(l => !l.includes('REPORT') && !l.includes('Location:')).join(' ').trim(),
-               createdAt: Date.now()
-            });
-         } catch (e) {
-            console.warn('Firestore log addition failed:', e.message);
-         }
+         await addDoc(collection(db, 'system_logs'), {
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            agent: `Vol: ${senderId} (${zoneName})`,
+            level: isEmergency ? 'error' : (densityLog > 80 ? 'warn' : 'info'),
+            message: updateMessage.replace(/\*/g, '').split('\n').filter(l => !l.includes('REPORT') && !l.includes('Location:')).join(' ').trim(),
+            createdAt: Date.now()
+         });
       }
 
     } catch (e: any) {
@@ -596,7 +549,7 @@ if (botToken) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   // Mock Live Match API (Can be connected to CricAPI later)
   app.get("/api/match/live", (req, res) => {
