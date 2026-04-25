@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, setDoc, addDoc } from 'firebase/firestore';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Loader2, Send } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 
 interface Zone {
@@ -30,6 +30,7 @@ export default function AdminPanel() {
   const [analyzingMode, setAnalyzingMode] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [broadcastMsg, setBroadcastMsg] = useState('');
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'zones'), (snap) => {
@@ -118,7 +119,7 @@ export default function AdminPanel() {
         try {
           const base64String = (reader.result as string).split(',')[1];
           
-          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const ai = new GoogleGenAI({ apiKey: (import.meta as any).env.VITE_GEMINI_API_KEY });
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [
@@ -163,6 +164,20 @@ export default function AdminPanel() {
     }
   };
 
+  const handleBroadcast = async () => {
+     if (!broadcastMsg.trim()) return;
+     try {
+        await addDoc(collection(db, 'broadcast_messages'), {
+           message: broadcastMsg,
+           createdAt: Date.now()
+        });
+        await createLog('Orchestrator', 'action', `Broadcast sent: "${broadcastMsg}"`);
+        setBroadcastMsg('');
+     } catch(e) {
+        console.error("Broadcast failed", e);
+     }
+  };
+
   if (loading) return <div className="text-neutral-400 text-sm p-4">Loading admin...</div>;
 
   return (
@@ -183,7 +198,7 @@ export default function AdminPanel() {
         className="hidden" 
       />
 
-      <div className="flex-1 overflow-y-auto pr-2 space-y-2.5 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto pr-2 space-y-2.5 custom-scrollbar mb-4">
         {zones.map(zone => (
           <div key={zone.id} className="bg-black/30 border border-white/5 p-3 rounded-xl flex items-center justify-between group hover:border-white/10 transition-colors">
             <div className="flex-1 min-w-0 pr-2">
@@ -218,6 +233,27 @@ export default function AdminPanel() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="pt-4 border-t border-white/10 shrink-0">
+         <h3 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 mb-2">Volunteer Broadcast</h3>
+         <div className="flex gap-2">
+            <input 
+              type="text" 
+              value={broadcastMsg}
+              onChange={(e) => setBroadcastMsg(e.target.value)}
+              placeholder="Message to volunteers..."
+              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-emerald-500/50"
+              onKeyDown={(e) => e.key === 'Enter' && handleBroadcast()}
+            />
+            <button
+               onClick={handleBroadcast}
+               disabled={!broadcastMsg.trim()}
+               className="bg-emerald-500 text-black p-2 rounded-lg hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500 transition-colors flex items-center justify-center w-10"
+            >
+               <Send className="w-4 h-4" />
+            </button>
+         </div>
       </div>
     </div>
   );

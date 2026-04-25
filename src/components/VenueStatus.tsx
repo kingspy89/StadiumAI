@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Car, MapPin, TrendingUp } from 'lucide-react';
+import { Users, Car, MapPin, TrendingUp, ShieldAlert } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs } from 'firebase/firestore';
 
 interface Zone {
   id: string;
@@ -13,6 +13,7 @@ interface Zone {
 export default function VenueStatus() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [totalAttendees, setTotalAttendees] = useState(0);
+  const [volunteerCount, setVolunteerCount] = useState(0);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'zones'), (snap) => {
@@ -27,7 +28,15 @@ export default function VenueStatus() {
       }
     });
 
-    return () => unsub();
+    // Fetch volunteer count dynamically
+    const volUnsub = onSnapshot(collection(db, 'telegram_users'), (snap) => {
+       setVolunteerCount(snap.size);
+    });
+
+    return () => {
+      unsub();
+      volUnsub();
+    };
   }, []);
 
   const parkingNorth = zones.find(z => z.id === 'p1')?.density || 85;
@@ -43,7 +52,7 @@ export default function VenueStatus() {
         </span>
       </div>
       
-      <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-xl p-4 mb-4 flex items-center justify-between">
+      <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-xl p-4 mb-3 flex items-center justify-between">
          <div>
              <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wide flex items-center gap-1 mb-1">
                  <Users className="w-3.5 h-3.5" /> Total Attendees
@@ -52,7 +61,16 @@ export default function VenueStatus() {
          </div>
          <div className="text-right">
              <span className="text-xs text-emerald-500/70 uppercase">Capacity</span>
-             <span className="block font-bold text-neutral-400 mt-0.5">33,000</span                 >
+             <span className="block font-bold text-neutral-400 mt-0.5">33,000</span>
+         </div>
+      </div>
+
+      <div className="bg-blue-900/20 border border-blue-500/30 rounded-xl p-4 mb-4 flex items-center justify-between">
+         <div>
+             <span className="text-xs text-blue-400 font-semibold uppercase tracking-wide flex items-center gap-1 mb-1">
+                 <ShieldAlert className="w-3.5 h-3.5" /> Active Volunteers
+             </span>
+             <span className="font-black text-2xl tracking-tighter text-blue-50">{volunteerCount} <span className="text-sm font-normal text-blue-400/60 ml-1">On-ground</span></span>
          </div>
       </div>
 

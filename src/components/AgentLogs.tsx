@@ -8,7 +8,7 @@ interface LogEntry {
   id: string;
   timestamp: string;
   agent: 'Vision/Heatmap' | 'Concessions' | 'Attendee Assistant' | 'Orchestrator';
-  level: 'info' | 'warn' | 'action';
+  level: 'info' | 'warn' | 'action' | 'error';
   message: string;
   createdAt: number;
 }
@@ -39,6 +39,7 @@ export default function AgentLogs() {
   }, [logs]);
 
   const getAgentColor = (agent: string) => {
+    if (agent.startsWith('Vol:')) return 'text-orange-400 font-bold';
     switch (agent) {
       case 'Vision/Heatmap': return 'text-emerald-400';
       case 'Concessions': return 'text-yellow-400';
@@ -74,12 +75,12 @@ export default function AgentLogs() {
                 <span className={`${getAgentColor(log.agent)} uppercase drop-shadow-[0_0_5px_currentColor]`}>
                   [{log.agent.substring(0, 4).toUpperCase()}]
                 </span>{' '}
-                <span className={`${log.level === 'warn' ? 'text-red-300' : log.level === 'action' ? 'text-emerald-200' : 'text-neutral-300'}`}>
+                <span className={`${log.level === 'error' ? 'text-red-500 font-bold' : log.level === 'warn' ? 'text-yellow-300' : log.level === 'action' ? 'text-emerald-200' : 'text-neutral-300'}`}>
                   {log.message}
                 </span>
-                {log.level === 'warn' && (
+                {(log.level === 'warn' || log.level === 'error') && (
                    <span className="ml-2 inline-flex items-center text-red-500 animate-pulse">
-                     ⚠️ ALONE
+                     ⚠️ ALERT
                    </span>
                 )}
               </div>

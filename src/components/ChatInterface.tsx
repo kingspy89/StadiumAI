@@ -67,7 +67,7 @@ export default function ChatInterface() {
     setInput('');
     setIsTyping(true);
 
-    const zonesStatus = zones.map(z => `- ${z.name}: ${z.density}% capacity`).join('\n');
+    const zonesStatus = zones.map(z => `- ${z.name}: ${z.density}% crowd`).join('\n');
     
     const venueContext = `You are the "Attendee Assistant Agent" for StadiumAI, a smart venue companion system. 
 You communicate with stadium attendees via a Telegram bot interface. Be helpful, concise, and friendly.
@@ -77,7 +77,7 @@ ${zonesStatus}
 
 - The user is currently sitting in Stand V1 (Block 4) and standing near Gate B right now.
 
-When asked a question, provide direct, helpful advice based strictly on this live data. If they ask about Food or Restrooms, steer them to the option with the lowest capacity percentage. If they ask about entering, tell them the Gate with the lowest capacity. Act like an autonomous agent connected to the stadium's live CCTV feeds. KEEP RESPONSES SHORT AND PUNCHY like a Telegram message.`;
+When asked a question, provide direct, helpful advice based strictly on this live data. If they ask about Food or Restrooms, steer them to the option with the lowest crowd percentage. If they ask about entering, tell them the Gate with the lowest crowd. Act like an autonomous agent connected to the stadium's live CCTV feeds. KEEP RESPONSES SHORT AND PUNCHY like a Telegram message.`;
 
     try {
       if (!process.env.GEMINI_API_KEY) {
@@ -102,13 +102,39 @@ When asked a question, provide direct, helpful advice based strictly on this liv
       
       setMessages(prev => [...prev, newBotMsg]);
     } catch (e) {
-      let botResponse = "I'm checking that for you from the orchestrator...";
+      let botResponse = `Hello! I'm your StadiumAI Concierge. `;
       const lowerInput = userText.toLowerCase();
-
-      if (lowerInput.includes('queue') || lowerInput.includes('line') || lowerInput.includes('food')) {
-         botResponse = "I recommend checking the shortest queue based on the live heatmap!";
-      } else {
-         botResponse = "Please wait a moment while I fetch live data...";
+      let dest = '';
+      
+      if (lowerInput.includes('food') || lowerInput.includes('eat') || lowerInput.includes('hungry')) {
+        const foodZones = zones.filter(z => z.type === 'food').sort((a,b) => a.density - b.density);
+        if (foodZones.length > 0) {
+          dest = foodZones[0].name;
+          botResponse += `Based on live crowd data, the least crowded food area is ${dest} (only ${foodZones[0].density}% crowd). I recommend heading there!`;
+        } else {
+          botResponse += `Check out the food courts on the live map for the best options.`;
+        }
+      } 
+      else if (lowerInput.includes('restroom') || lowerInput.includes('bathroom') || lowerInput.includes('toilet') || lowerInput.includes('washroom')) {
+        const rrZones = zones.filter(z => z.type === 'restroom').sort((a,b) => a.density - b.density);
+        if (rrZones.length > 0) {
+          dest = rrZones[0].name;
+          botResponse += `The least crowded restroom is at ${dest} (${rrZones[0].density}% crowd).`;
+        } else {
+           botResponse += `Please check the live map for the nearest restroom with low congestion!`;
+        }
+      }
+      else if (lowerInput.includes('gate') || lowerInput.includes('enter') || lowerInput.includes('exit')) {
+        const gateZones = zones.filter(z => z.type === 'gate').sort((a,b) => a.density - b.density);
+        if (gateZones.length > 0) {
+           dest = gateZones[0].name;
+           botResponse += `For the fastest path, use ${dest} which currently has ${gateZones[0].density}% crowd density.`;
+        } else {
+           botResponse += `You can find the most open gates on the live map.`;
+        }
+      }
+      else {
+        botResponse += `I can help you find the least crowded restrooms, food stalls, and gates. Just ask me!`;
       }
 
       setMessages(prev => [...prev, {

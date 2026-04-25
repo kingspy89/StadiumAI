@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import TelegramBot from 'node-telegram-bot-api';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, onSnapshot, setDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
@@ -24,141 +24,350 @@ try {
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 let bot: TelegramBot | null = null;
-const activeChats = new Set<string | number>();
+const userStates: Record<string, string> = {};
+const tempUserIds: Record<string, string> = {};
+const activeVolunteers: Record<string, { id: string, zone: string, zoneId: string }> = {};
 
 if (adminChatId) {
-  activeChats.add(adminChatId);
+  activeVolunteers[adminChatId] = { id: 'HEAD', zone: 'Main Control', zoneId: '' };
 }
 
 if (botToken) {
   bot = new TelegramBot(botToken, { polling: true });
   console.log("🤖 Telegram Bot started polling");
 
-  let zonesCache: any[] = [];
+  process.once('SIGINT', () => { bot?.stopPolling(); process.exit(0); });
+  process.once('SIGTERM', () => { bot?.stopPolling(); process.exit(0); });
+
   let previousZones: Record<string, number> = {};
 
   if (db) {
+    // Fetch registered volunteers on boot
+    getDocs(collection(db, 'telegram_users')).then(snap => {
+       snap.forEach(d => { activeVolunteers[d.id] = d.data() as any; });
+    }).catch(e => console.log("Failed to fetch past volunteers"));
+
     onSnapshot(collection(db, 'zones'), (snap) => {
       const currentZones = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-      
       currentZones.forEach(zone => {
          const oldDensity = previousZones[zone.id] || 0;
          const newDensity = zone.density;
-         
-         // Trigger alert if density crosses 85% going upwards
          if (newDensity > 85 && oldDensity <= 85) {
-            const msg = `🚨 EMERGENCY ALERT:\n${zone.name} is currently highly congested (${newDensity}% capacity). Try to avoid this area and transfer crowd to a less crowded location.`;
-            
-            // Broadcast to all known chats
-            activeChats.forEach(chatId => {
-               bot?.sendMessage(chatId, msg).catch(e => console.error("Failed to send alert to", chatId, e.message));
+            const msg = `🚨 SYSTEM ALERT:\n${zone.name} is currently highly congested (${newDensity}% crowd). Volunteers, please coordinate.`;
+            Object.keys(activeVolunteers).forEach(chatId => {
+               bot?.sendMessage(chatId, msg).catch(e => console.error(e.message));
             });
          }
-         
          previousZones[zone.id] = newDensity;
       });
+    });
 
-      zonesCache = currentZones;
+    onSnapshot(collection(db, 'broadcast_messages'), (snap) => {
+       snap.docChanges().forEach(change => {
+          if (change.type === 'added') {
+             const data = change.doc.data();
+             if (Date.now() - data.createdAt < 120000) { // Only send if it was created in the last 2 minutes
+                const sendMsg = `📢 *DASHBOARD BROADCAST*\n\n${data.message}`;
+                Object.keys(activeVolunteers).forEach(chatId => {
+                   bot?.sendMessage(chatId, sendMsg, { parse_mode: 'Markdown' }).catch(e=>console.error(e));
+                });
+             }
+          }
+       });
     });
   }
 
+  const zoneNameToId: Record<string, string> = {
+    'Gate A': 'g1', 'Gate B': 'g2', 
+    'Food North': 'f1', 'Snacks South': 'f2',
+    'Stand V1': 's1', 'Restrooms W': 'r1',
+    'North Parking': 'p1', 'South Parking': 'p2'
+  };
+
   bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    activeChats.add(chatId);
+    const chatId = msg.chat.id.toString();
     const text = msg.text || '';
 
-    // Typing action
+    // Volunteer Registration Flow
+    if (text === '/start') {
+      userStates[chatId] = 'AWAITING_ID';
+      bot?.sendMessage(chatId, `🏟️ *Stadium Bot Online!*\n\nWelcome! Please type your Volunteer ID to begin:`, {
+        parse_mode: 'Markdown',
+        reply_markup: { remove_keyboard: true }
+      });
+      return;
+    }
+
+    if (text === '/leave' || text === '/signout') {
+       if (activeVolunteers[chatId]) {
+          delete activeVolunteers[chatId];
+       }
+       if (db) {
+          try { await deleteDoc(doc(db, 'telegram_users', chatId)); } catch(e){}
+       }
+       userStates[chatId] = '';
+       bot?.sendMessage(chatId, `👋 You have signed out successfully! You will no longer receive updates. Send /start to volunteer again.`, {
+          reply_markup: { remove_keyboard: true }
+       });
+       return;
+    }
+
+    if (userStates[chatId] === 'AWAITING_ID') {
+      tempUserIds[chatId] = text;
+      userStates[chatId] = 'AWAITING_ZONE';
+      const keyboardMenu = {
+        reply_markup: {
+          keyboard: [
+             [{ text: 'Gate A' }, { text: 'Gate B' }],
+             [{ text: 'Food North' }, { text: 'Snacks South' }],
+             [{ text: 'Stand V1' }, { text: 'Restrooms W' }],
+             [{ text: 'North Parking' }, { text: 'South Parking' }]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      };
+      bot?.sendMessage(chatId, `Thanks, *${text}*! Now select your assigned zone from the menu:`, { parse_mode: 'Markdown', ...keyboardMenu });
+      return;
+    }
+
+    if (userStates[chatId] === 'AWAITING_ZONE') {
+       if (!zoneNameToId[text]) {
+          bot?.sendMessage(chatId, `⚠️ Please select a valid zone from the keyboard options.`);
+          return;
+       }
+       const zoneId = zoneNameToId[text];
+       const volId = tempUserIds[chatId];
+       
+       const userData = { id: volId, zone: text, zoneId };
+       activeVolunteers[chatId] = userData;
+       userStates[chatId] = 'REGISTERED';
+       
+       if (db) {
+          try { await setDoc(doc(db, 'telegram_users', chatId), userData); } catch(e: any){ console.error("Firebase error saving user:", e.message) }
+       }
+       
+       // Send Live Crowd Data
+       let crowdSummary = `📊 *LIVE STADIUM STATUS*\n\n`;
+       if (db) {
+          try {
+             const snap = await getDocs(collection(db, 'zones'));
+             const zonesList = snap.docs.map(doc => ({ name: doc.data().name, density: doc.data().density }));
+             zonesList.sort((a, b) => b.density - a.density);
+             zonesList.forEach(z => {
+                const icon = z.density > 80 ? '🔴' : (z.density > 50 ? '🟡' : '🟢');
+                crowdSummary += `${icon} *${z.name}*: ${z.density}% crowd\n`;
+             });
+          } catch(e) {}
+       } else {
+          crowdSummary += `🟢 Gate A: 45%\n🟡 Food North: 65%\n🔴 Gate B: 88%\n`;
+       }
+       
+       const persistentKeyboard = {
+          reply_markup: {
+             keyboard: [
+                [{ text: '📝 Update Status' }, { text: '🚨 Emergency Broadcast' }],
+                [{ text: '📊 Live Data' }]
+             ],
+             resize_keyboard: true,
+             is_persistent: true
+          }
+       };
+
+       await bot?.sendMessage(chatId, `✅ *Registration Successful!*\n\nYou are assigned to: *${text}*\n\n${crowdSummary}`, { parse_mode: 'Markdown' });
+       
+       bot?.sendMessage(chatId, `Use the buttons below to interact, or just send a photo/audio anytime. (Send /leave to sign out)`, persistentKeyboard);
+       return;
+    }
+
+    const senderData = activeVolunteers[chatId];
+    if (!senderData && chatId !== adminChatId) {
+        // We only trigger this if it's not a slash command, avoiding chat spam if another bot handles it.
+        // Wait, if it's an unrecognized text, we just say register.
+        bot?.sendMessage(chatId, `⚠️ You are not registered. Please send /start to begin.`);
+        return;
+    }
+
+    if (text === '📊 Live Data') {
+       let crowdSummary = `📊 *LIVE STADIUM STATUS*\n\n`;
+       if (db) {
+          try {
+             const snap = await getDocs(collection(db, 'zones'));
+             const zonesList = snap.docs.map(doc => ({ name: doc.data().name, density: doc.data().density }));
+             zonesList.sort((a, b) => b.density - a.density);
+             zonesList.forEach(z => {
+                const icon = z.density > 80 ? '🔴' : (z.density > 50 ? '🟡' : '🟢');
+                crowdSummary += `${icon} *${z.name}*: ${z.density}% crowd\n`;
+             });
+          } catch(e) {}
+       }
+       bot?.sendMessage(chatId, crowdSummary, { parse_mode: 'Markdown' });
+       return;
+    }
+
+    if (text === '📝 Update Status') {
+       userStates[chatId] = 'AWAITING_UPDATE';
+       bot?.sendMessage(chatId, `Send your update (text, photo, or voice message) for *${senderData.zone}*:`, { parse_mode: 'Markdown' });
+       return;
+    }
+
+    if (text === '🚨 Emergency Broadcast') {
+       userStates[chatId] = 'AWAITING_EMERGENCY';
+       bot?.sendMessage(chatId, `🚨 *EMERGENCY MODE*\n\nDescribe the emergency or send a photo/voice note. This will alert ALL volunteers immediately:`, { parse_mode: 'Markdown' });
+       return;
+    }
+
     bot?.sendChatAction(chatId, 'typing');
 
+    // Process Broadcasts and AI Estimation
     try {
       const gKey = process.env.GEMINI_API_KEY;
-      
-      const generateMockResponse = (input: string, zones: any[]) => {
-        const lowerInput = input.toLowerCase();
-        let message = `Hello! I'm your StadiumAI Concierge. `;
-        let dest = '';
-        
-        if (lowerInput.includes('food') || lowerInput.includes('eat') || lowerInput.includes('hungry')) {
-          const foodZones = zones.filter(z => z.type === 'food').sort((a,b) => a.density - b.density);
-          if (foodZones.length > 0) {
-            dest = foodZones[0].name;
-            message += `Based on live crowd data, the least crowded food area is ${dest} (only ${foodZones[0].density}% capacity). I recommend heading there!`;
-          } else {
-            message += `Check out the food courts on the live map for the best options.`;
-          }
-        } 
-        else if (lowerInput.includes('restroom') || lowerInput.includes('bathroom') || lowerInput.includes('toilet') || lowerInput.includes('washroom')) {
-          const rrZones = zones.filter(z => z.type === 'restroom').sort((a,b) => a.density - b.density);
-          if (rrZones.length > 0) {
-            dest = rrZones[0].name;
-            message += `The least crowded restroom is at ${dest} (${rrZones[0].density}% capacity).`;
-          } else {
-             message += `Please check the live map for the nearest restroom with low congestion!`;
-          }
-        }
-        else if (lowerInput.includes('gate') || lowerInput.includes('enter') || lowerInput.includes('exit')) {
-          const gateZones = zones.filter(z => z.type === 'gate').sort((a,b) => a.density - b.density);
-          if (gateZones.length > 0) {
-             dest = gateZones[0].name;
-             message += `For the fastest path, use ${dest} which currently has ${gateZones[0].density}% crowd density.`;
-          } else {
-             message += `You can find the most open gates on the live map.`;
-          }
-        }
-        else {
-          message += `I can help you find the least crowded restrooms, food stalls, and gates. Just ask me!`;
-        }
+      const senderId = senderData.id;
+      const zoneName = senderData.zone;
+      const zoneId = senderData.zoneId;
 
-        if (dest) {
-          // Construct the navigation link
-          const appUrl = 'https://ais-pre-jbmuwftq4kxthod735k5gu-869592050378.asia-southeast1.run.app';
-          message += `\n\n🗺️ Live Navigation:\n${appUrl}/user?dest=${encodeURIComponent(dest)}`;
-        }
+      let updateMessage = '';
+      let isEmergency = false;
+      let densityLog: number | undefined = undefined;
 
-        return message;
-      };
+      if (gKey && bot) {
+         const ai = new GoogleGenAI({ apiKey: gKey });
+         
+         const isManualEmergency = userStates[chatId] === 'AWAITING_EMERGENCY';
 
-      if (gKey && gKey.length > 10) {
-        try {
-          const ai = new GoogleGenAI({ apiKey: gKey });
-          const zonesStatus = zonesCache.map(z => `- ${z.name}: ${z.density}% capacity (${z.type || 'zone'})`).join('\n');
-          
-          const systemPrompt = `You are StadiumAI Bot, an advanced AI concierge on Telegram. You assist users inside the stadium.
-LIVE STATUS:
-${zonesStatus}
-
-Answer the user directly and concisely. If they ask about congestion, restroom, or food, check the LIVE STATUS and refer them to the least crowded option. Be friendly and helpful!
-
-IMPORTANT: If you recommend a specific zone, gate, food court, or restroom, YOU MUST append a Live Navigation link to your response in exactly this format:
-🗺️ Live Navigation:
-https://ais-pre-jbmuwftq4kxthod735k5gu-869592050378.asia-southeast1.run.app/user?dest=[URL_ENCODED_ZONE_NAME]`;
-
-          const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: text,
-            config: {
-              systemInstruction: systemPrompt
+         if (msg.photo && msg.photo.length > 0) {
+            try {
+               const photo = msg.photo[msg.photo.length - 1]; 
+               const fileLink = await bot.getFileLink(photo.file_id);
+               const response = await fetch(fileLink);
+               const arrayBuffer = await response.arrayBuffer();
+               const base64Data = Buffer.from(arrayBuffer).toString('base64');
+               
+               const aiRes = await ai.models.generateContent({
+                  model: 'gemini-2.5-flash',
+                  contents: [
+                     { role: 'user', parts: [
+                        { inlineData: { data: base64Data, mimeType: 'image/jpeg' }} 
+                     ]}
+                  ],
+                  config: {
+                     systemInstruction: `Analyze this crowd image. Output ONLY a valid JSON object with EXACTLY these keys: "density" (number 0-100), "emergency" (boolean), "summary" (short description). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
+                     responseMimeType: "application/json"
+                  }
+               });
+               
+               let textVal = aiRes.text?.trim() || "";
+               const jsonMatch = textVal.match(/\{[\s\S]*\}/);
+               if (jsonMatch) {
+                   textVal = jsonMatch[0];
+               }
+               console.log("AI IMAGE OUTPUT:", textVal);
+               let parsed = JSON.parse(textVal);
+               densityLog = parsed.density;
+               isEmergency = isManualEmergency || parsed.emergency;
+               if (db && zoneId && parsed.density !== undefined) {
+                   await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(parsed.density))) });
+               }
+               
+               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n🤖 AI Vision: ${parsed.summary}\n📊 Crowd Density: ${parsed.density}%`;
+            } catch(e: any) { 
+               console.error("Error processing image update:", e.message);
+               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nAI could not process this image. ERROR: ${e.message}`;
+               isEmergency = isManualEmergency;
             }
-          });
-
-          if (db) {
-             await addDoc(collection(db, 'system_logs'), {
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                agent: 'Attendee Assistant',
-                level: 'action',
-                message: `Telegram user asked: "${text.substring(0,20)}...". Replied with directions using AI.`,
-                createdAt: Date.now()
-             });
-          }
-
-          bot?.sendMessage(chatId, response.text || generateMockResponse(text, zonesCache));
-        } catch (apiError: any) {
-          console.error("Gemini API Error:", apiError.message);
-          bot?.sendMessage(chatId, generateMockResponse(text, zonesCache));
-        }
-      } else {
-        bot?.sendMessage(chatId, generateMockResponse(text, zonesCache));
+         } 
+         else if (text) {
+            try {
+               const aiRes = await ai.models.generateContent({
+                  model: 'gemini-2.5-flash',
+                  contents: [
+                     { role: 'user', parts: [ { text: text } ] }
+                  ],
+                  config: {
+                     systemInstruction: `Analyze this volunteer update. Output ONLY JSON with EXACTLY: "density" (number 0-100, guess if vague, e.g. "empty" = 10, "packed" = 90), "emergency" (boolean), "summary" (rephrased clear summary). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
+                     responseMimeType: "application/json"
+                  }
+               });
+               let textVal = aiRes.text?.trim() || "";
+               const jsonMatch = textVal.match(/\{[\s\S]*\}/);
+               if (jsonMatch) {
+                   textVal = jsonMatch[0];
+               }
+               console.log("AI TEXT OUTPUT:", textVal);
+               let parsed = JSON.parse(textVal);
+               densityLog = parsed.density;
+               isEmergency = isManualEmergency || parsed.emergency;
+               if (db && zoneId && parsed.density !== undefined) {
+                   await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(parsed.density))) });
+               }
+               
+               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}\n🤖 AI Translation: ${parsed.summary}\n📊 Dashboard updated to: ${parsed.density}%`;
+            } catch(e: any) {
+               console.error("Error processing text update:", e.message);
+               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}\nERROR: ${e.message}`;
+               isEmergency = isManualEmergency;
+            }
+         }
       }
+      
+      if (msg.voice && !updateMessage) {
+         updateMessage = `🎤 [VOICE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a voice message)`;
+      }
+
+      if (!updateMessage) return;
+
+      if (isEmergency) {
+         updateMessage = `🚨 EMERGENCY at ${zoneName} 🚨\n\n${updateMessage}`;
+      }
+
+      // 1. Broadcast to other chats
+      let sentCount = 0;
+      for (const [chatStr, user] of Object.entries(activeVolunteers)) {
+         if (chatStr !== chatId) {
+            try {
+               await bot?.sendMessage(chatStr, updateMessage);
+               sentCount++;
+            } catch (e) {}
+         }
+      }
+      
+      let finalResponse = `✅ Update processed & dashboard updated. Alert broadcasted to ${sentCount} other volunteers.\n\n`;
+      finalResponse += `📝 *Your Report Summary:*\n${updateMessage.replace(/\[.*\]\nLocation:.*\n/, '')}\n\n`;
+      finalResponse += `📊 *UPDATED LIVE STADIUM STATUS*\n\n`;
+      if (db) {
+         try {
+            const snap = await getDocs(collection(db, 'zones'));
+            const zonesList = snap.docs.map(doc => ({ name: doc.data().name, id: doc.id, density: doc.data().density }));
+            
+            const updatedZone = zonesList.find(z => z.id === zoneId);
+            if (updatedZone && densityLog !== undefined) {
+               updatedZone.density = Math.max(0, Math.min(100, Number(densityLog)));
+            }
+
+            zonesList.sort((a, b) => b.density - a.density);
+            zonesList.forEach(z => {
+               const icon = z.density > 80 ? '🔴' : (z.density > 50 ? '🟡' : '🟢');
+               finalResponse += `${icon} *${z.name}*: ${z.density}% crowd\n`;
+            });
+         } catch(e) {}
+      }
+
+      bot?.sendMessage(chatId, finalResponse, { parse_mode: 'Markdown' });
+      
+      // Reset State
+      userStates[chatId] = 'REGISTERED';
+
+      // 2. Update Dashboard Logs
+      if (db) {
+         await addDoc(collection(db, 'system_logs'), {
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            agent: `Vol: ${senderId} (${zoneName})`,
+            level: isEmergency ? 'error' : (densityLog > 80 ? 'warn' : 'info'),
+            message: updateMessage.replace(/\*/g, '').split('\n').filter(l => !l.includes('REPORT') && !l.includes('Location:')).join(' ').trim(),
+            createdAt: Date.now()
+         });
+      }
+
     } catch (e: any) {
       console.error("TELEGRAM BOT ERROR:", e);
       bot?.sendMessage(chatId, `Error processing your request: ${e.message}`);

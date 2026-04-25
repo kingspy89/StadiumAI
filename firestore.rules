@@ -37,5 +37,13 @@ service cloud.firestore {
     match /system_logs/{logId} {
       allow read, write: if true;
     }
+
+    match /telegram_users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /broadcast_messages/{msgId} {
+      allow read, write: if true;
+    }
   }
 }
