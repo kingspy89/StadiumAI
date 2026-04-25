@@ -7,6 +7,14 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 
+console.log(">>> server.ts module loaded");
+console.log(">>> ENVIRONMENT VARIABLES:", {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  HAS_GEMINI: !!process.env.GEMINI_API_KEY,
+  HAS_TELEGRAM: !!process.env.TELEGRAM_BOT_TOKEN
+});
+
 async function callAI(text: string, base64Image?: string) {
   const gKey = process.env.GEMINI_API_KEY?.trim();
   const groqKey = process.env.GROQ_API_KEY?.trim();
@@ -121,11 +129,15 @@ if (adminChatId) {
 }
 
 if (botToken) {
-  bot = new TelegramBot(botToken, { polling: true });
-  console.log("🤖 Telegram Bot started polling");
+  try {
+    bot = new TelegramBot(botToken, { polling: true });
+    console.log("🤖 Telegram Bot started polling");
 
-  process.once('SIGINT', () => { bot?.stopPolling(); process.exit(0); });
-  process.once('SIGTERM', () => { bot?.stopPolling(); process.exit(0); });
+    process.once('SIGINT', () => { bot?.stopPolling(); process.exit(0); });
+    process.once('SIGTERM', () => { bot?.stopPolling(); process.exit(0); });
+  } catch (err) {
+    console.error(">>> FATAL ERROR INIT TELEGRAM BOT:", err);
+  }
 
   let previousZones: Record<string, number> = {};
 
@@ -548,8 +560,9 @@ if (botToken) {
 }
 
 async function startServer() {
+  console.log("Starting server...");
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(process.env.PORT as string, 10) || 8080;
 
   // Mock Live Match API (Can be connected to CricAPI later)
   app.get("/api/match/live", (req, res) => {
@@ -587,9 +600,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  try {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`>>> SUCCESS: Server running on port ${PORT} with 0.0.0.0 binding`);
+    }).on('error', (err) => {
+      console.error(">>> ERROR BINDING PORT:", err);
+    });
+  } catch (err) {
+    console.error(">>> FATAL ERROR IN LISTEN:", err);
+  }
 }
 
 startServer();
