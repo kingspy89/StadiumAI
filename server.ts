@@ -584,6 +584,10 @@ async function startServer() {
     });
   });
 
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: Date.now() });
+  });
+
   if (process.env.NODE_ENV !== "production") {
     // Vite middleware
     const vite = await createViteServer({
