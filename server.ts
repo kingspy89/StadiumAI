@@ -1,4 +1,5 @@
 import express from 'express';
+import 'dotenv/config';
 import { createServer as createViteServer } from 'vite';
 import TelegramBot from 'node-telegram-bot-api';
 import { initializeApp } from 'firebase/app';
@@ -245,7 +246,7 @@ if (botToken) {
                const base64Data = Buffer.from(arrayBuffer).toString('base64');
                
                const aiRes = await ai.models.generateContent({
-                  model: 'gemini-2.5-flash',
+                  model: 'gemini-1.5-flash',
                   contents: [
                      { role: 'user', parts: [
                         { inlineData: { data: base64Data, mimeType: 'image/jpeg' }} 
@@ -281,7 +282,7 @@ if (botToken) {
                updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n🤖 AI Vision: ${parsed.summary}\n📊 Crowd Density: ${parsed.density}%${parsed.suggestion ? `\n💡 Action: ${parsed.suggestion}` : ''}`;
             } else if (text) {
                const aiRes = await ai.models.generateContent({
-                  model: 'gemini-2.5-flash',
+                  model: 'gemini-1.5-flash',
                   contents: [
                      { role: 'user', parts: [ { text: text } ] }
                   ],

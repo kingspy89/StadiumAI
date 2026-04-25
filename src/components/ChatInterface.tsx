@@ -85,7 +85,7 @@ When asked a question, provide direct, helpful advice based strictly on this liv
       }
       
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash',
         contents: [
           { role: 'user', parts: [{ text: venueContext + "\n\nUser Question: " + userText }] }
         ]
