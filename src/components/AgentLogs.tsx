@@ -89,7 +89,7 @@ export default function AgentLogs() {
           {logs.length === 0 && (
             <div className="flex gap-2 items-center text-neutral-600 mt-4 p-4">
               <span className="text-emerald-400 font-bold animate-pulse inline-block w-2 bg-emerald-400 h-3"></span> 
-              <span className="italic pl-1 font-serif text-xs">Awaiting log stream...</span>
+              <span className="font-sans italic text-xs">Awaiting log stream...</span>
             </div>
           )}
         </div>

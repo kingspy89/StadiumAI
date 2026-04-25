@@ -47,7 +47,7 @@ export default function AgentHealth() {
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
                   <Icon className={`w-3.5 h-3.5 ${agent.color}`} />
-                  <span className="font-serif italic text-xs tracking-wide text-neutral-400">{agent.name}</span>
+                  <span className="font-sans font-medium text-xs tracking-wide text-neutral-400">{agent.name}</span>
                 </div>
                 <span className={`text-[10px] font-mono ${isHigh ? 'text-red-400 font-bold block animate-pulse' : 'text-neutral-600'}`}>
                   {load.toFixed(0)}% LOAD

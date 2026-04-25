@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Car, MapPin, TrendingUp, ShieldAlert } from 'lucide-react';
+import { Users, Car, MapPin, TrendingUp, ShieldAlert, Thermometer, Wind, Activity } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, getDocs } from 'firebase/firestore';
 
@@ -55,25 +55,25 @@ export default function VenueStatus() {
       <div className="p-4 flex-1 flex flex-col justify-center">
          <div className="bg-[#0a0a0a] border border-emerald-500/20 rounded-xl p-5 mb-4 flex items-center justify-between shadow-[inset_0_0_20px_rgba(16,185,129,0.05)]">
             <div>
-                <span className="font-serif italic text-xs text-emerald-500/80 uppercase tracking-widest flex items-center gap-2 mb-2">
+                <span className="font-sans font-medium text-xs text-emerald-500/80 uppercase tracking-widest flex items-center gap-2 mb-2">
                     <Users className="w-3.5 h-3.5" /> Total Attendees
                 </span>
                 <span className="font-mono font-bold text-4xl tracking-tighter text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{totalAttendees.toLocaleString()}</span>
             </div>
             <div className="text-right border-l border-emerald-500/20 pl-4">
-                <span className="font-serif italic text-[10px] text-emerald-500/50 uppercase tracking-widest">Wankhede Capacity</span>
+                <span className="font-sans font-medium text-[10px] text-emerald-500/50 uppercase tracking-widest">Wankhede Capacity</span>
                 <span className="block font-mono font-bold text-neutral-500 mt-1 uppercase text-sm">33,000</span>
             </div>
          </div>
 
          <div className="bg-[#0a0a0a] border border-blue-500/20 rounded-xl p-5 mb-4 flex items-center justify-between shadow-[inset_0_0_20px_rgba(59,130,246,0.05)]">
             <div>
-                <span className="font-serif italic text-xs text-blue-500/80 uppercase tracking-widest flex items-center gap-2 mb-2">
+                <span className="font-sans font-medium text-xs text-blue-500/80 uppercase tracking-widest flex items-center gap-2 mb-2">
                     <ShieldAlert className="w-3.5 h-3.5" /> Active Volunteers
                 </span>
                 <span className="font-mono font-bold text-3xl tracking-tighter text-blue-400 drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]">
                     {volunteerCount} 
-                    <span className="text-xs font-normal text-blue-400/60 ml-3 italic font-serif">On-ground agents</span>
+                    <span className="text-xs font-normal text-blue-400/60 ml-3 font-sans uppercase tracking-widest">On-ground agents</span>
                 </span>
             </div>
          </div>
@@ -83,7 +83,7 @@ export default function VenueStatus() {
                 <div className={`absolute top-0 left-0 w-full h-1 ${parkingNorth > 80 ? 'bg-rose-500' : 'bg-neutral-600'} opacity-80`} style={{ width: `${parkingNorth}%` }}></div>
                 <div className="flex items-center justify-between mb-2">
                    <Car className="w-4 h-4 text-neutral-500" />
-                   <span className="font-serif italic text-[10px] text-neutral-500 uppercase tracking-widest">North Parking</span>
+                   <span className="font-sans font-medium text-[10px] text-neutral-500 uppercase tracking-widest">North Parking</span>
                 </div>
                 <span className={`font-mono text-xl font-bold ${parkingNorth > 80 ? 'text-rose-400' : 'text-neutral-300'}`}>{parkingNorth}% <span className="text-xs font-normal text-neutral-600">FULL</span></span>
             </div>
@@ -91,7 +91,7 @@ export default function VenueStatus() {
                 <div className={`absolute top-0 left-0 w-full h-1 ${parkingSouth > 80 ? 'bg-rose-500' : 'bg-emerald-500'} opacity-80`} style={{ width: `${parkingSouth}%` }}></div>
                 <div className="flex items-center justify-between mb-2">
                    <Car className="w-4 h-4 text-emerald-500/70" />
-                   <span className="font-serif italic text-[10px] text-emerald-500/70 uppercase tracking-widest">South Parking</span>
+                   <span className="font-sans font-medium text-[10px] text-emerald-500/70 uppercase tracking-widest">South Parking</span>
                 </div>
                 <span className={`font-mono text-xl font-bold ${parkingSouth > 80 ? 'text-rose-400' : 'text-emerald-400'}`}>{parkingSouth}% <span className="text-xs font-normal text-emerald-500/50">FULL</span></span>
             </div>

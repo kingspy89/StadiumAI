@@ -63,7 +63,7 @@ export default function AdminView() {
                 </div>
                 <div>
                   <h3 className="font-mono font-bold text-sm tracking-widest text-rose-400 uppercase mb-1">{em.name} <span className="opacity-50 mx-2">|</span> IMMEDIATE ACTION REQUIRED</h3>
-                  <p className="font-serif italic text-sm text-rose-200">{em.emergencyMsg}</p>
+                  <p className="font-sans text-sm text-rose-200">{em.emergencyMsg}</p>
                 </div>
               </div>
               {em.aiSuggestion && (
@@ -72,7 +72,7 @@ export default function AdminView() {
                      <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span>
                      AI SUGGESTION
                    </p>
-                   <p className="text-rose-200/90 font-serif text-sm italic">{em.aiSuggestion}</p>
+                   <p className="text-rose-200/90 font-sans text-sm">{em.aiSuggestion}</p>
                 </div>
               )}
             </div>
@@ -98,7 +98,7 @@ export default function AdminView() {
 
         {/* Center Column (5/12) - Visuals & Admin */}
         <div className="lg:col-span-5 flex flex-col gap-5 overflow-hidden h-full">
-          <div className="bg-[#111111] border border-neutral-800 rounded-3xl shrink-0 h-[320px] relative overflow-hidden flex flex-col font-sans mb-0">
+          <div className="bg-[#111111] border border-neutral-800 rounded-3xl shrink-0 h-[460px] relative overflow-hidden flex flex-col font-sans mb-0">
             <div className="flex items-center justify-between p-4 border-b border-neutral-800 bg-[#0a0a0a] absolute top-0 left-0 w-full z-10">
               <h2 className="text-[11px] font-mono font-bold uppercase tracking-[0.1em] text-neutral-400">Heatmap Engine</h2>
               <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-900 px-2.5 py-0.5 rounded-full uppercase tracking-widest font-mono">

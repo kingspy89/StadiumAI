@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, setDoc, addDoc } from 'firebase/firestore';
-import { Camera, Loader2, Send, AlertTriangle } from 'lucide-react';
+import { Camera, Loader2, Send, AlertTriangle, Play, Square } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 
 interface Zone {
@@ -16,14 +16,14 @@ interface Zone {
 }
 
 const initialZones: Zone[] = [
-  { id: 'g1', name: 'Gate A', density: 85, type: 'gate', x: 20, y: 15 },
-  { id: 'g2', name: 'Gate B', density: 30, type: 'gate', x: 80, y: 15 },
-  { id: 'f1', name: 'Food North', density: 95, type: 'food', x: 25, y: 40 },
-  { id: 'f2', name: 'Snacks South', density: 40, type: 'food', x: 75, y: 40 },
-  { id: 's1', name: 'Stand V1', density: 60, type: 'seating', x: 50, y: 80 },
-  { id: 'r1', name: 'Restrooms W', density: 75, type: 'restroom', x: 15, y: 65 },
-  { id: 'p1', name: 'North Parking', density: 85, type: 'parking', x: 10, y: 10 },
-  { id: 'p2', name: 'South Parking', density: 30, type: 'parking', x: 90, y: 10 },
+  { id: 'g1', name: 'Gate A', density: 85, type: 'gate', x: 8, y: 50 },
+  { id: 'g2', name: 'Gate B', density: 30, type: 'gate', x: 92, y: 50 },
+  { id: 'f1', name: 'Food North', density: 95, type: 'food', x: 50, y: 8 },
+  { id: 'f2', name: 'Snacks South', density: 40, type: 'food', x: 50, y: 92 },
+  { id: 's1', name: 'Stand V1', density: 60, type: 'seating', x: 85, y: 20 },
+  { id: 'r1', name: 'Restrooms W', density: 75, type: 'restroom', x: 15, y: 80 },
+  { id: 'p1', name: 'North Parking', density: 85, type: 'parking', x: 20, y: 15 },
+  { id: 'p2', name: 'South Parking', density: 30, type: 'parking', x: 80, y: 85 },
 ];
 
 export default function AdminPanel() {
@@ -33,6 +33,7 @@ export default function AdminPanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [isSimulating, setIsSimulating] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'zones'), (snap) => {
@@ -73,6 +74,31 @@ export default function AdminPanel() {
     });
     return () => unsub();
   }, []);
+
+  // Crowd Auto-Pilot Simulator
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isSimulating && zones.length > 0) {
+      interval = setInterval(() => {
+        // Only update 1 or 2 random zones per tick to avoid spamming the DB too hard
+        const numUpdates = Math.floor(Math.random() * 2) + 1;
+        for (let i = 0; i < numUpdates; i++) {
+          const randomZone = zones[Math.floor(Math.random() * zones.length)];
+          if (!randomZone.emergencyMsg) { // don't auto-update zones with active emergencies
+            const shift = Math.floor(Math.random() * 11) - 5; // -5 to +5
+            let newDensity = randomZone.density + shift;
+            if (newDensity < 0) newDensity = 0;
+            if (newDensity > 100) newDensity = 100;
+            
+            if (newDensity !== randomZone.density) {
+                updateDoc(doc(db, 'zones', randomZone.id), { density: newDensity });
+            }
+          }
+        }
+      }, 2500); // run every 2.5s
+    }
+    return () => clearInterval(interval);
+  }, [isSimulating, zones]);
 
   const createLog = async (agent: string, level: string, message: string) => {
     await addDoc(collection(db, 'system_logs'), {
@@ -199,9 +225,18 @@ export default function AdminPanel() {
           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
           Live Crowd Simulator Core
         </h2>
-        <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-900 px-2.5 py-0.5 rounded-full uppercase tracking-widest font-mono">
-          Sync: Active
-        </span>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsSimulating(!isSimulating)}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded border font-mono text-[9px] uppercase tracking-widest transition-colors ${isSimulating ? 'bg-indigo-950/40 text-indigo-400 border-indigo-900/50' : 'bg-neutral-900 text-neutral-500 border-neutral-800 hover:text-neutral-300'}`}
+          >
+            {isSimulating ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            {isSimulating ? 'Auto-Pilot On' : 'Simulate'}
+          </button>
+          <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-900 px-2.5 py-0.5 rounded-full uppercase tracking-widest font-mono hidden sm:inline-block">
+            Sync: Active
+          </span>
+        </div>
       </div>
       
       <input 
@@ -215,10 +250,10 @@ export default function AdminPanel() {
 
       <div className="flex-1 overflow-y-auto no-scrollbar pb-4 bg-[#111111]">
         <div className="grid grid-cols-[1.5fr_1fr_2fr_1fr] border-b border-neutral-800 p-3 bg-[#0a0a0a]/50 sticky top-0 z-10 backdrop-blur-md">
-           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500">Zone Name</div>
-           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500">Type</div>
-           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500 text-center">Crowd Density</div>
-           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500 text-right">Actions</div>
+           <div className="font-sans font-medium text-[11px] uppercase tracking-widest text-neutral-500">Zone Name</div>
+           <div className="font-sans font-medium text-[11px] uppercase tracking-widest text-neutral-500">Type</div>
+           <div className="font-sans font-medium text-[11px] uppercase tracking-widest text-neutral-500 text-center">Crowd Density</div>
+           <div className="font-sans font-medium text-[11px] uppercase tracking-widest text-neutral-500 text-right">Actions</div>
         </div>
         {zones.map(zone => (
           <div key={zone.id}>
@@ -320,7 +355,7 @@ export default function AdminPanel() {
       </div>
 
       <div className="p-4 border-t border-neutral-800 bg-[#0a0a0a] shrink-0">
-         <h3 className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Broadcast Relay</h3>
+         <h3 className="font-sans font-medium text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Broadcast Relay</h3>
          <div className="flex gap-3 mb-4">
             <input 
               type="text" 
@@ -361,7 +396,15 @@ export default function AdminPanel() {
            <button 
              onClick={async () => {
                 await createLog('Admin', 'action', 'All zones reset to nominal baseline density.');
-                zones.forEach(z => updateDoc(doc(db, 'zones', z.id), { density: Math.floor(Math.random() * 20) + 10, emergencyMsg: null }));
+                zones.forEach(z => {
+                   const initial = initialZones.find(iz => iz.id === z.id);
+                   const baseDensity = Math.floor(Math.random() * 20) + 10;
+                   if (initial) {
+                       updateDoc(doc(db, 'zones', z.id), { density: baseDensity, emergencyMsg: null, x: initial.x, y: initial.y });
+                   } else {
+                       updateDoc(doc(db, 'zones', z.id), { density: baseDensity, emergencyMsg: null });
+                   }
+                });
              }}
              className="bg-emerald-950/40 text-emerald-400 border border-emerald-900/50 px-4 py-1.5 text-[9px] uppercase tracking-widest font-mono hover:bg-emerald-900/60 transition-colors rounded flex-1"
            >
