@@ -1,20 +1,24 @@
-# Build stage
-FROM node:20-alpine AS build
+FROM node:22-alpine
+
 WORKDIR /app
+
+# Copy package files
 COPY package*.json ./
+
+# Install all dependencies (including devDependencies needed for build and tsx)
 RUN npm install
+
+# Copy project files
 COPY . .
+
+# Build the React/Vite frontend
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
-WORKDIR /app
-RUN npm install -g serve
-COPY --from=build /app/dist ./dist
+# Expose the port Cloud Run will route traffic to
+EXPOSE 3000
 
-# Cloud Run requires the app to listen on the $PORT environment variable (default 8080)
-ENV PORT=8080
-EXPOSE 8080
+# Start the server
+ENV NODE_ENV=production
+ENV PORT=3000
 
-# Serve the static files from the 'dist' directory
-CMD ["sh", "-c", "serve -s dist -l tcp://0.0.0.0:${PORT}"]
+CMD ["npx", "tsx", "server.ts"]
