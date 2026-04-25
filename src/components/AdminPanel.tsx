@@ -119,7 +119,7 @@ export default function AdminPanel() {
         try {
           const base64String = (reader.result as string).split(',')[1];
           
-          const ai = new GoogleGenAI({ apiKey: (import.meta as any).env.VITE_GEMINI_API_KEY });
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [
@@ -200,37 +200,56 @@ export default function AdminPanel() {
 
       <div className="flex-1 overflow-y-auto pr-2 space-y-2.5 custom-scrollbar mb-4">
         {zones.map(zone => (
-          <div key={zone.id} className="bg-black/30 border border-white/5 p-3 rounded-xl flex items-center justify-between group hover:border-white/10 transition-colors">
-            <div className="flex-1 min-w-0 pr-2">
-              <p className="font-semibold text-sm text-neutral-200 truncate flex items-center gap-2">
-                 {zone.name}
-                 <button 
-                   onClick={() => handleCaptureClick(zone.id)}
-                   disabled={analyzingMode !== null}
-                   className="text-neutral-500 hover:text-emerald-400 disabled:opacity-50 transition-colors"
-                   title="Upload CCTV Image for Vision AI Analysis"
-                 >
-                   {analyzingMode === zone.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" /> : <Camera className="w-3.5 h-3.5" />}
-                 </button>
-              </p>
-              <p className="text-[10px] text-neutral-500 uppercase tracking-widest">{zone.type}</p>
+          <div key={zone.id} className={`bg-black/30 border p-3 rounded-xl flex flex-col group hover:border-white/10 transition-colors ${zone.emergencyMsg ? 'border-rose-500/50 bg-rose-950/20' : 'border-white/5'}`}>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex-1 min-w-0 pr-2">
+                <p className="font-semibold text-sm text-neutral-200 truncate flex items-center gap-2">
+                   {zone.name}
+                   <button 
+                     onClick={() => handleCaptureClick(zone.id)}
+                     disabled={analyzingMode !== null}
+                     className="text-neutral-500 hover:text-emerald-400 disabled:opacity-50 transition-colors"
+                     title="Upload CCTV Image for Vision AI Analysis"
+                   >
+                     {analyzingMode === zone.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" /> : <Camera className="w-3.5 h-3.5" />}
+                   </button>
+                </p>
+                <p className="text-[10px] text-neutral-500 uppercase tracking-widest">{zone.type}</p>
+              </div>
+              <div className="flex items-center gap-3 w-[50%] justify-end shrink-0">
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="100" 
+                  value={zone.density} 
+                  onChange={(e) => updateDensity(zone.id, parseInt(e.target.value))}
+                  className="w-full max-w-[100px] h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer border border-neutral-700
+                             [&:focus]:outline-none
+                             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
+                             [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:rounded-full"
+                />
+                <span className={`font-mono text-xs w-9 text-right font-medium ${zone.density > 80 ? 'text-red-400' : zone.density > 50 ? 'text-yellow-400' : 'text-emerald-400'}`}>
+                  {zone.density}%
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-3 w-[50%] justify-end shrink-0">
-              <input 
-                type="range" 
-                min="0" 
-                max="100" 
-                value={zone.density} 
-                onChange={(e) => updateDensity(zone.id, parseInt(e.target.value))}
-                className="w-full max-w-[100px] h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer border border-neutral-700
-                           [&:focus]:outline-none
-                           [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
-                           [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:rounded-full"
-              />
-              <span className={`font-mono text-xs w-9 text-right font-medium ${zone.density > 80 ? 'text-red-400' : zone.density > 50 ? 'text-yellow-400' : 'text-emerald-400'}`}>
-                {zone.density}%
-              </span>
-            </div>
+            {zone.emergencyMsg && (
+              <div className="mt-3 bg-rose-950 px-3 py-2 rounded-lg border border-rose-500/30 w-full flex justify-between items-center">
+                <div className="text-xs text-rose-200 flex-1 pr-2">
+                   <strong className="block text-rose-400 mb-0.5">ALERT</strong>
+                   {zone.emergencyMsg}
+                </div>
+                <button
+                  onClick={async () => {
+                     await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
+                     await createLog('Admin', 'action', `Resolved emergency at ${zone.name}.`);
+                  }}
+                  className="bg-neutral-900 border border-neutral-700 text-neutral-300 px-3 py-1 rounded text-[10px] uppercase font-bold tracking-wider hover:bg-neutral-800 transition-colors"
+                >
+                  Resolve
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

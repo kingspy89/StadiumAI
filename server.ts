@@ -207,13 +207,13 @@ if (botToken) {
 
     if (text === '📝 Update Status') {
        userStates[chatId] = 'AWAITING_UPDATE';
-       bot?.sendMessage(chatId, `Send your update (text, photo, or voice message) for *${senderData.zone}*:`, { parse_mode: 'Markdown' });
+       bot?.sendMessage(chatId, `Send your update (text or photo) for *${senderData.zone}*:`, { parse_mode: 'Markdown' });
        return;
     }
 
     if (text === '🚨 Emergency Broadcast') {
        userStates[chatId] = 'AWAITING_EMERGENCY';
-       bot?.sendMessage(chatId, `🚨 *EMERGENCY MODE*\n\nDescribe the emergency or send a photo/voice note. This will alert ALL volunteers immediately:`, { parse_mode: 'Markdown' });
+       bot?.sendMessage(chatId, `🚨 *EMERGENCY MODE*\n\nDescribe the emergency or send a photo. This will alert ALL volunteers immediately:`, { parse_mode: 'Markdown' });
        return;
     }
 
@@ -222,6 +222,7 @@ if (botToken) {
     // Process Broadcasts and AI Estimation
     try {
       const gKey = process.env.GEMINI_API_KEY;
+      console.log("TELEGRAM DIAGNOSTIC: gKey is", typeof gKey, gKey === undefined ? 'undefined' : (gKey!.length > 0 ? Array.from(gKey!).map((c, i) => i < 4 ? c : '*').join('') : 'empty string'));
       const senderId = senderData.id;
       const zoneName = senderData.zone;
       const zoneId = senderData.zoneId;
@@ -230,13 +231,13 @@ if (botToken) {
       let isEmergency = false;
       let densityLog: number | undefined = undefined;
 
-      if (gKey && bot) {
-         const ai = new GoogleGenAI({ apiKey: gKey });
-         
-         const isManualEmergency = userStates[chatId] === 'AWAITING_EMERGENCY';
+      const isManualEmergency = userStates[chatId] === 'AWAITING_EMERGENCY';
 
-         if (msg.photo && msg.photo.length > 0) {
-            try {
+      if (gKey && bot) {
+         try {
+            const ai = new GoogleGenAI({ apiKey: gKey });
+            
+            if (msg.photo && msg.photo.length > 0) {
                const photo = msg.photo[msg.photo.length - 1]; 
                const fileLink = await bot.getFileLink(photo.file_id);
                const response = await fetch(fileLink);
@@ -251,67 +252,123 @@ if (botToken) {
                      ]}
                   ],
                   config: {
-                     systemInstruction: `Analyze this crowd image. Output ONLY a valid JSON object with EXACTLY these keys: "density" (number 0-100), "emergency" (boolean), "summary" (short description). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
+                     systemInstruction: `Analyze this crowd image. Output ONLY a valid JSON object with EXACTLY these keys: "density" (number 0-100), "emergency" (boolean, true if dangerous or requires action like redirect), "summary" (short description), "suggestion" (if action needed, provide a short actionable command like 'Transfer crowd to Gate B', else ''). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
                      responseMimeType: "application/json"
                   }
                });
                
-               let textVal = aiRes.text?.trim() || "";
+               let textVal = aiRes.text?.trim() || "{}";
                const jsonMatch = textVal.match(/\{[\s\S]*\}/);
-               if (jsonMatch) {
-                   textVal = jsonMatch[0];
-               }
-               console.log("AI IMAGE OUTPUT:", textVal);
+               if (jsonMatch) textVal = jsonMatch[0];
+               
                let parsed = JSON.parse(textVal);
                densityLog = parsed.density;
-               isEmergency = isManualEmergency || parsed.emergency;
-               if (db && zoneId && parsed.density !== undefined) {
-                   await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(parsed.density))) });
+               isEmergency = isManualEmergency || parsed.emergency || !!parsed.suggestion;
+               
+               if (db && zoneId) {
+                   const updatePayload: any = {};
+                   if (parsed.density !== undefined) updatePayload.density = Math.max(0, Math.min(100, Number(parsed.density)));
+                   if (isEmergency) {
+                      updatePayload.emergencyMsg = parsed.summary;
+                      updatePayload.aiSuggestion = parsed.suggestion || '';
+                   } else {
+                      updatePayload.emergencyMsg = null;
+                      updatePayload.aiSuggestion = null;
+                   }
+                   await updateDoc(doc(db, 'zones', zoneId), updatePayload);
                }
                
-               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n🤖 AI Vision: ${parsed.summary}\n📊 Crowd Density: ${parsed.density}%`;
-            } catch(e: any) { 
-               console.error("Error processing image update:", e.message);
-               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nAI could not process this image. ERROR: ${e.message}`;
-               isEmergency = isManualEmergency;
-            }
-         } 
-         else if (text) {
-            try {
+               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n🤖 AI Vision: ${parsed.summary}\n📊 Crowd Density: ${parsed.density}%${parsed.suggestion ? `\n💡 Action: ${parsed.suggestion}` : ''}`;
+            } else if (text) {
                const aiRes = await ai.models.generateContent({
                   model: 'gemini-2.5-flash',
                   contents: [
                      { role: 'user', parts: [ { text: text } ] }
                   ],
                   config: {
-                     systemInstruction: `Analyze this volunteer update. Output ONLY JSON with EXACTLY: "density" (number 0-100, guess if vague, e.g. "empty" = 10, "packed" = 90), "emergency" (boolean), "summary" (rephrased clear summary). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
+                     systemInstruction: `Analyze this volunteer update. Output ONLY JSON with EXACTLY: "density" (number 0-100, guess if vague, e.g. "empty" = 10, "full" or "packed" = 100), "emergency" (boolean, true if dangerous or requires action like redirect), "summary" (rephrased clear summary), "suggestion" (if action needed, provide a short actionable command like 'Transfer crowd to Gate B', else ''). NO Markdown formatting, NO backticks. ONLY valid JSON.`,
                      responseMimeType: "application/json"
                   }
                });
-               let textVal = aiRes.text?.trim() || "";
+               
+               let textVal = aiRes.text?.trim() || "{}";
                const jsonMatch = textVal.match(/\{[\s\S]*\}/);
-               if (jsonMatch) {
-                   textVal = jsonMatch[0];
-               }
-               console.log("AI TEXT OUTPUT:", textVal);
+               if (jsonMatch) textVal = jsonMatch[0];
+               
                let parsed = JSON.parse(textVal);
                densityLog = parsed.density;
-               isEmergency = isManualEmergency || parsed.emergency;
-               if (db && zoneId && parsed.density !== undefined) {
-                   await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(parsed.density))) });
+               isEmergency = isManualEmergency || parsed.emergency || !!parsed.suggestion;
+               
+               if (db && zoneId) {
+                   const updatePayload: any = {};
+                   if (parsed.density !== undefined) updatePayload.density = Math.max(0, Math.min(100, Number(parsed.density)));
+                   if (isEmergency) {
+                      updatePayload.emergencyMsg = parsed.summary;
+                      updatePayload.aiSuggestion = parsed.suggestion || '';
+                   } else {
+                      updatePayload.emergencyMsg = null;
+                      updatePayload.aiSuggestion = null;
+                   }
+                   await updateDoc(doc(db, 'zones', zoneId), updatePayload);
                }
                
-               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}\n🤖 AI Translation: ${parsed.summary}\n📊 Dashboard updated to: ${parsed.density}%`;
-            } catch(e: any) {
-               console.error("Error processing text update:", e.message);
-               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}\nERROR: ${e.message}`;
+               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}\n🤖 AI Translation: ${parsed.summary}\n📊 Dashboard updated to: ${parsed.density}%${parsed.suggestion ? `\n💡 Action: ${parsed.suggestion}` : ''}`;
+            }
+         } catch(e: any) {
+            console.error("AI processing error:", e);
+            // Fallback
+            if (msg.photo && msg.photo.length > 0) {
+               updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a photo - Error: ${e.message})`;
+               isEmergency = isManualEmergency;
+            } else if (text) {
+               let fallbackDensity: number | undefined;
+               const textLower = text.toLowerCase();
+               const match = text.match(/(\d+)\s*%/);
+               if (match) {
+                  fallbackDensity = parseInt(match[1]);
+               } else if (textLower.includes('packed') || textLower.includes('full') || textLower.includes('crowded')) {
+                  fallbackDensity = 100;
+               } else if (textLower.includes('half') || textLower.includes('normal') || textLower.includes('medium')) {
+                  fallbackDensity = 50;
+               } else if (textLower.includes('empty') || textLower.includes('clear')) {
+                  fallbackDensity = 0;
+               }
+
+               if (fallbackDensity !== undefined) {
+                  densityLog = fallbackDensity;
+                  if (db && zoneId) await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(fallbackDensity))) });
+               }
+               updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}\n(Error: ${e.message})`;
                isEmergency = isManualEmergency;
             }
          }
-      }
-      
-      if (msg.voice && !updateMessage) {
-         updateMessage = `🎤 [VOICE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a voice message)`;
+      } else {
+         // No AI key present fallback
+         if (msg.photo && msg.photo.length > 0) {
+            updateMessage = `📸 [IMAGE REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\n(A volunteer sent a photo)`;
+            isEmergency = isManualEmergency;
+         } 
+         else if (text) {
+            let fallbackDensity: number | undefined;
+            const textLower = text.toLowerCase();
+            const match = text.match(/(\d+)\s*%/);
+            if (match) {
+               fallbackDensity = parseInt(match[1]);
+            } else if (textLower.includes('packed') || textLower.includes('full') || textLower.includes('crowded')) {
+               fallbackDensity = 100;
+            } else if (textLower.includes('half') || textLower.includes('normal') || textLower.includes('medium')) {
+               fallbackDensity = 50;
+            } else if (textLower.includes('empty') || textLower.includes('clear')) {
+               fallbackDensity = 0;
+            }
+
+            if (fallbackDensity !== undefined) {
+               densityLog = fallbackDensity;
+               if (db && zoneId) await updateDoc(doc(db, 'zones', zoneId), { density: Math.max(0, Math.min(100, Number(fallbackDensity))) });
+            }
+            updateMessage = `📋 [TEXT REPORT]\nLocation: ${zoneName} (Vol: ${senderId})\nMessage: ${text}${fallbackDensity !== undefined ? `\n📊 Dashboard updated to: ${fallbackDensity}%` : ''}`;
+            isEmergency = isManualEmergency;
+         }
       }
 
       if (!updateMessage) return;

@@ -102,11 +102,17 @@ export default function MapDashboard() {
                      }`}
                    />
 
-                   <div className={`w-10 h-10 rounded-full flex items-center justify-center border backdrop-blur-md transition-all group-hover:scale-110 z-10 ${getColor(zone.density)}`}>
+                   <div className={`w-10 h-10 rounded-full flex items-center justify-center border backdrop-blur-md transition-all group-hover:scale-110 z-10 ${getColor(zone.density)} ${(zone as any).emergencyMsg ? 'ring-4 ring-rose-500 animate-pulse' : ''}`}>
                      {getIcon(zone.type)}
                    </div>
+                   {(zone as any).emergencyMsg && (
+                      <div className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-0.5 z-20 shadow-lg">
+                         <Activity className="w-3 h-3 animate-ping" />
+                      </div>
+                   )}
                    <div className="absolute top-12 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded px-2 py-1 text-center shadow-lg transform transition-all opacity-0 group-hover:opacity-100 group-hover:translate-y-1 z-50 pointer-events-none">
                      <p className="text-xs font-bold text-white whitespace-nowrap mb-1">{zone.name}</p>
+                     {(zone as any).emergencyMsg && <p className="text-[10px] text-rose-400 font-bold max-w-[120px] whitespace-normal leading-tight mb-1 uppercase">{(zone as any).emergencyMsg}</p>}
                      <div className="flex items-center gap-2 justify-center mt-1">
                         <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                            <div 
