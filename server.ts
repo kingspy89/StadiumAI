@@ -461,7 +461,7 @@ if (botToken) {
                else fallbackSuggestion = 'Investigate situation immediately.';
             }
 
-            const errMsg = e instanceof Error ? e.message : String(e);
+            const errMsg = "No AI API Key";
             
             if (db && zoneId) {
                const updatePayload: any = {};

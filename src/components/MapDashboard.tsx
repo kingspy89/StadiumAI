@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Users, Map as MapIcon, Coffee, DoorOpen, Zap } from 'lucide-react';
+import { Activity, Users, Map as MapIcon, Coffee, DoorOpen, Zap, Car } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -75,28 +75,23 @@ export default function MapDashboard() {
 
   return (
     <div className="flex flex-col h-full w-full relative group">
-      <div className="flex justify-between items-start mb-4 z-10">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-neutral-400">Crowd Density Heatmap</h2>
-        <span className="text-xs bg-black/40 px-2 py-1 rounded text-emerald-400 border border-emerald-500/20">Live Sync</span>
-      </div>
-      
-      <div className="flex-1 relative bg-neutral-900/60 rounded-xl border border-white/5 overflow-hidden flex items-center justify-center p-4">
+      <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4">
         
         {/* Flat 2D Narendra Modi Stadium Background */}
-        <div className="relative w-full max-w-[400px] aspect-square rounded-full border-[16px] border-orange-900/40 bg-neutral-800 shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] flex items-center justify-center">
+        <div className="relative h-full max-h-[260px] aspect-square rounded-full border-[12px] border-[#1f2937]/50 bg-[#0a0a0a] shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] flex items-center justify-center">
              
              {/* The Cricket Ground */}
-             <div className="absolute inset-4 rounded-full bg-emerald-900/60 border border-emerald-500/20 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] flex items-center justify-center">
+             <div className="absolute inset-4 rounded-full bg-emerald-950/40 border border-emerald-500/10 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] flex items-center justify-center">
                  {/* Boundary Rope */}
-                 <div className="absolute inset-[10%] border-[2px] border-white/20 rounded-full pointer-events-none"></div>
+                 <div className="absolute inset-[10%] border-[2px] border-white/5 rounded-full pointer-events-none"></div>
                  {/* 30-Yard Circle */}
-                 <div className="absolute inset-[25%] border border-white/30 border-dashed rounded-full pointer-events-none"></div>
+                 <div className="absolute inset-[25%] border border-white/10 border-dashed rounded-full pointer-events-none"></div>
                  
                  {/* Center Cricket Pitch (22 yards) */}
-                 <div className="absolute w-[8%] h-[25%] bg-[#d2a679] border border-[#a67b5b] rounded-[2px] flex flex-col justify-between py-1 shadow-sm">
+                 <div className="absolute w-[8%] h-[25%] bg-[#4b3b2c] border border-[#a67b5b]/50 rounded-[2px] flex flex-col justify-between py-1 shadow-sm">
                      {/* Creases */}
-                     <div className="w-full h-[1px] bg-white/80"></div>
-                     <div className="w-full h-[1px] bg-white/80"></div>
+                     <div className="w-full h-[1px] bg-white/30"></div>
+                     <div className="w-full h-[1px] bg-white/30"></div>
                  </div>
              </div>
 
@@ -106,9 +101,9 @@ export default function MapDashboard() {
                const isRecent = !!recentUpdates[zone.id];
 
                const getColor = (density: number) => {
-                 if (density > 80) return 'text-rose-500 bg-rose-500/20 border-rose-500/50 shadow-[0_0_20px_rgba(225,29,72,0.4)]';
-                 if (density > 50) return 'text-amber-500 bg-amber-500/20 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.3)]';
-                 return 'text-emerald-500 bg-emerald-500/20 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]';
+                 if (density > 80) return 'text-rose-500 bg-rose-500/10 border-rose-500/30 shadow-[0_0_20px_rgba(225,29,72,0.3)]';
+                 if (density > 50) return 'text-amber-500 bg-amber-500/10 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]';
+                 return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]';
                };
 
                const getIcon = (type: string) => {
@@ -116,6 +111,7 @@ export default function MapDashboard() {
                    case 'gate': return <DoorOpen className="w-4 h-4" />;
                    case 'food': return <Coffee className="w-4 h-4" />;
                    case 'restroom': return <Users className="w-4 h-4" />;
+                   case 'parking': return <Car className="w-4 h-4" />;
                    default: return <Activity className="w-4 h-4" />;
                  }
                };
@@ -142,7 +138,7 @@ export default function MapDashboard() {
                         opacity: zone.density > 80 ? [0.4, 0.7, 0.4] : 0.4
                      }}
                      transition={{ repeat: Infinity, duration: 2 }}
-                     className={`absolute w-24 h-24 rounded-full blur-2xl -z-10 ${
+                     className={`absolute w-24 h-24 rounded-full blur-[20px] -z-10 ${
                         zone.density > 80 ? 'bg-rose-500/40' : 
                         zone.density > 50 ? 'bg-amber-500/30' : 
                         'bg-emerald-500/30'
@@ -159,26 +155,26 @@ export default function MapDashboard() {
                       </div>
                    )}
                    {!isEmergency && isRecent && (
-                      <div className="absolute -top-2 -right-2 bg-sky-500 text-white rounded-full p-0.5 z-20 shadow-lg" title="Recently Updated">
+                      <div className="absolute -top-2 -right-2 bg-emerald-500 text-white rounded-full p-0.5 z-20 shadow-lg" title="Recently Updated">
                          <Zap className="w-3 h-3 outline-none" />
                       </div>
                    )}
 
-                   <div className="absolute top-12 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded px-2 py-1 text-center shadow-lg transform transition-all opacity-0 group-hover:opacity-100 group-hover:translate-y-1 z-50 pointer-events-none">
-                     <p className="text-xs font-bold text-white whitespace-nowrap mb-1">{zone.name}</p>
-                     {isEmergency && <p className="text-[10px] text-rose-400 font-bold max-w-[120px] whitespace-normal leading-tight mb-1 uppercase">{zone.emergencyMsg}</p>}
+                   <div className="absolute top-12 bg-[#050505]/95 backdrop-blur-xl border border-neutral-800 rounded px-3 py-2 text-center shadow-lg transform transition-all opacity-0 group-hover:opacity-100 group-hover:translate-y-1 z-50 pointer-events-none">
+                     <p className="text-[10px] font-mono font-bold text-white uppercase tracking-widest mb-1.5">{zone.name}</p>
+                     {isEmergency && <p className="text-[10px] text-rose-400 font-serif italic max-w-[120px] whitespace-normal leading-tight mb-2 uppercase">{zone.emergencyMsg}</p>}
                      <div className="flex items-center gap-2 justify-center mt-1">
-                        <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="w-16 h-1 bg-neutral-800/80 rounded-full overflow-hidden">
                            <div 
                              className={`h-full rounded-full ${
                                 zone.density > 80 ? 'bg-rose-500' : 
-                                zone.density > 50 ? 'bg-amber-500' : 
-                                'bg-emerald-500'
+                                zone.density > 50 ? 'bg-amber-400' : 
+                                'bg-emerald-400'
                              }`}
                              style={{ width: `${zone.density}%` }}
                            />
                         </div>
-                        <span className="text-[10px] text-slate-300 font-mono font-bold w-6">{zone.density}%</span>
+                        <span className="text-[10px] text-neutral-400 font-mono font-bold w-6">{zone.density}%</span>
                      </div>
                    </div>
                  </motion.div>

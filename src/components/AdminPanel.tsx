@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, setDoc, addDoc } from 'firebase/firestore';
-import { Camera, Loader2, Send } from 'lucide-react';
+import { Camera, Loader2, Send, AlertTriangle } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 
 interface Zone {
@@ -102,6 +102,16 @@ export default function AdminPanel() {
     }
   };
 
+  const triggerEmergency = async (id: string, msg: string) => {
+    const zone = zones.find(z => z.id === id);
+    if (!zone) return;
+    await updateDoc(doc(db, 'zones', id), {
+      emergencyMsg: msg,
+      density: Math.max(zone.density, 80) // Boost density so it shows vividly on heatmap
+    });
+    await createLog('Admin', 'warn', `Manual incident triggered at ${zone.name}.`);
+  };
+
   const handleCaptureClick = (zoneId: string) => {
     setSelectedZone(zoneId);
     fileInputRef.current?.click();
@@ -180,14 +190,17 @@ export default function AdminPanel() {
      }
   };
 
-  if (loading) return <div className="text-neutral-400 text-sm p-4">Loading admin...</div>;
+  if (loading) return <div className="text-neutral-400 font-mono text-xs p-5 uppercase tracking-widest">Initializing Control Data...</div>;
 
   return (
-    <div className="flex flex-col h-full bg-neutral-900 p-5 rounded-3xl border border-transparent">
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Live Crowd Simulator</h2>
-        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
-          Firebase Sync
+    <div className="flex flex-col h-full bg-[#111111] p-0 border border-neutral-800 rounded-3xl overflow-hidden">
+      <div className="flex items-center justify-between p-4 border-b border-neutral-800 bg-[#0a0a0a] shrink-0">
+        <h2 className="text-[11px] font-mono uppercase tracking-[0.1em] text-neutral-400 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+          Live Crowd Simulator Core
+        </h2>
+        <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-900 px-2.5 py-0.5 rounded-full uppercase tracking-widest font-mono">
+          Sync: Active
         </span>
       </div>
       
@@ -200,100 +213,160 @@ export default function AdminPanel() {
         className="hidden" 
       />
 
-      <div className="flex-1 overflow-y-auto pr-2 space-y-2.5 custom-scrollbar mb-4">
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-4 bg-[#111111]">
+        <div className="grid grid-cols-[1.5fr_1fr_2fr_1fr] border-b border-neutral-800 p-3 bg-[#0a0a0a]/50 sticky top-0 z-10 backdrop-blur-md">
+           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500">Zone Name</div>
+           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500">Type</div>
+           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500 text-center">Crowd Density</div>
+           <div className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500 text-right">Actions</div>
+        </div>
         {zones.map(zone => (
-          <div key={zone.id} className={`bg-black/30 border p-3 rounded-xl flex flex-col group hover:border-white/10 transition-colors ${zone.emergencyMsg ? 'border-rose-500/50 bg-rose-950/20' : 'border-white/5'}`}>
-            <div className="flex items-center justify-between w-full">
-              <div className="flex-1 min-w-0 pr-2">
-                <p className="font-semibold text-sm text-neutral-200 truncate flex items-center gap-2">
-                   {zone.name}
-                   <button 
-                     onClick={() => handleCaptureClick(zone.id)}
-                     disabled={analyzingMode !== null}
-                     className="text-neutral-500 hover:text-emerald-400 disabled:opacity-50 transition-colors"
-                     title="Upload CCTV Image for Vision AI Analysis"
-                   >
-                     {analyzingMode === zone.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" /> : <Camera className="w-3.5 h-3.5" />}
-                   </button>
-                </p>
-                <p className="text-[10px] text-neutral-500 uppercase tracking-widest">{zone.type}</p>
+          <div key={zone.id}>
+            <div className={`grid grid-cols-[1.5fr_1fr_2fr_1fr] items-center p-3 border-b border-neutral-800 transition-colors hover:bg-neutral-900 ${zone.emergencyMsg ? 'bg-rose-950/20 hover:bg-rose-950/30' : ''}`}>
+              <div className="flex items-center gap-2 min-w-0 pr-2">
+                <span className="font-mono text-xs text-neutral-200 truncate">{zone.name}</span>
+                {zone.emergencyMsg && <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0 animate-pulse" />}
               </div>
-              <div className="flex items-center gap-3 w-[50%] justify-end shrink-0">
+              <div className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest">
+                {zone.type}
+              </div>
+              <div className="flex items-center gap-3 justify-center px-4">
                 <input 
                   type="range" 
                   min="0" 
                   max="100" 
                   value={zone.density} 
                   onChange={(e) => updateDensity(zone.id, parseInt(e.target.value))}
-                  className="w-full max-w-[100px] h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer border border-neutral-700
+                  className="w-full max-w-[120px] h-1 bg-neutral-900 rounded-full appearance-none cursor-pointer border border-neutral-800
                              [&:focus]:outline-none
-                             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
-                             [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:rounded-full"
+                             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-4 
+                             [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:rounded-[1px]"
+                  style={{
+                    backgroundImage: `linear-gradient(to right, ${zone.density > 80 ? '#f43f5e' : zone.density > 50 ? '#fbbf24' : '#10b981'} ${zone.density}%, transparent ${zone.density}%)`
+                  }}
                 />
-                <span className={`font-mono text-xs w-9 text-right font-medium ${zone.density > 80 ? 'text-red-400' : zone.density > 50 ? 'text-yellow-400' : 'text-emerald-400'}`}>
-                  {zone.density}%
+                <span className={`font-mono text-xs w-9 text-right ${zone.density > 80 ? 'text-rose-400' : zone.density > 50 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {(zone.density).toString().padStart(3, '0')}%
                 </span>
+              </div>
+              <div className="flex items-center justify-end gap-1">
+                 <button 
+                   onClick={() => triggerEmergency(zone.id, 'High congestion detected manually.')}
+                   className="text-neutral-500 hover:text-rose-400 transition-colors p-1.5 rounded hover:bg-neutral-800"
+                   title="Trigger Incident Alert"
+                 >
+                   <AlertTriangle className="w-3.5 h-3.5" />
+                 </button>
+                 <button 
+                   onClick={() => handleCaptureClick(zone.id)}
+                   disabled={analyzingMode !== null}
+                   className="text-neutral-500 hover:text-emerald-400 disabled:opacity-50 transition-colors p-1.5 rounded hover:bg-neutral-800"
+                   title="Upload CCTV Image for Vision AI Analysis"
+                 >
+                   {analyzingMode === zone.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" /> : <Camera className="w-3.5 h-3.5" />}
+                 </button>
+                 <button
+                   onClick={() => updateDensity(zone.id, 10)}
+                   className="text-neutral-500 hover:text-sky-400 transition-colors p-1.5 rounded hover:bg-neutral-800 font-mono text-[9px] uppercase tracking-widest"
+                   title="Clear Zone"
+                 >
+                   CLR
+                 </button>
               </div>
             </div>
             {zone.emergencyMsg && (
-              <div className="mt-3 bg-rose-950 px-3 py-2 rounded-lg border border-rose-500/30 w-full flex flex-col gap-2">
-                <div className="flex justify-between items-start">
-                  <div className="text-xs text-rose-200 flex-1 pr-2">
-                     <strong className="block text-rose-400 mb-0.5">ALERT</strong>
-                     {zone.emergencyMsg}
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    {zone.aiSuggestion && (
-                      <button
-                        onClick={async () => {
-                           await createLog('Admin', 'action', `Executed AI Suggestion for ${zone.name}: ${zone.aiSuggestion}`);
-                           await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
-                        }}
-                        className="bg-indigo-900 border border-indigo-700 text-indigo-300 px-3 py-1 rounded text-[10px] uppercase font-bold tracking-wider hover:bg-indigo-800 transition-colors"
-                      >
-                        Execute
-                      </button>
-                    )}
-                    <button
-                      onClick={async () => {
-                         await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
-                         await createLog('Admin', 'action', `Resolved emergency at ${zone.name}.`);
-                      }}
-                      className="bg-neutral-900 border border-neutral-700 text-neutral-300 px-3 py-1 rounded text-[10px] uppercase font-bold tracking-wider hover:bg-neutral-800 transition-colors"
-                    >
-                      Resolve
-                    </button>
-                  </div>
-                </div>
-                {zone.aiSuggestion && (
-                  <div className="text-xs text-amber-200 bg-amber-950/40 p-2 rounded border border-amber-500/30">
-                    <strong className="text-amber-400">💡 AI Suggestion:</strong> {zone.aiSuggestion}
-                  </div>
-                )}
+              <div className="bg-rose-950/20 border-b border-rose-900/50 p-4">
+                 <div className="flex justify-between items-start mb-3">
+                   <div className="flex-1 pr-4">
+                     <p className="font-mono text-[10px] text-rose-500 tracking-widest uppercase mb-1">Alert Detection</p>
+                     <p className="text-xs text-rose-200 border-l-2 border-rose-500 pl-3 leading-relaxed">{zone.emergencyMsg}</p>
+                   </div>
+                   <div className="flex gap-2 shrink-0">
+                     {zone.aiSuggestion && (
+                       <button
+                         onClick={async () => {
+                            await createLog('Admin', 'action', `Executed AI Suggestion for ${zone.name}: ${zone.aiSuggestion}`);
+                            await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
+                         }}
+                         className="bg-indigo-950/50 border border-indigo-700/50 text-indigo-300 px-4 py-1.5 text-[10px] uppercase tracking-widest font-mono hover:bg-indigo-900/50 transition-colors"
+                       >
+                         Execute Action
+                       </button>
+                     )}
+                     <button
+                       onClick={async () => {
+                          await updateDoc(doc(db, 'zones', zone.id), { emergencyMsg: null, aiSuggestion: null });
+                          await createLog('Admin', 'action', `Resolved emergency at ${zone.name}.`);
+                       }}
+                       className="bg-neutral-900 border border-neutral-700 text-neutral-300 px-4 py-1.5 text-[10px] uppercase tracking-widest font-mono hover:bg-neutral-800 transition-colors"
+                     >
+                       Mark Resolved
+                     </button>
+                   </div>
+                 </div>
+                 {zone.aiSuggestion && (
+                   <div className="mt-2 bg-black/40 border border-amber-900/30 p-3">
+                     <p className="font-mono text-[10px] text-amber-500 tracking-widest uppercase mb-1 flex items-center gap-2">
+                       <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+                       Orchestrator Suggestion
+                     </p>
+                     <p className="text-xs text-amber-200/90 font-mono pl-3.5 leading-relaxed">{zone.aiSuggestion}</p>
+                   </div>
+                 )}
               </div>
             )}
           </div>
         ))}
       </div>
 
-      <div className="pt-4 border-t border-white/10 shrink-0">
-         <h3 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 mb-2">Volunteer Broadcast</h3>
-         <div className="flex gap-2">
+      <div className="p-4 border-t border-neutral-800 bg-[#0a0a0a] shrink-0">
+         <h3 className="font-serif italic text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Broadcast Relay</h3>
+         <div className="flex gap-3 mb-4">
             <input 
               type="text" 
               value={broadcastMsg}
               onChange={(e) => setBroadcastMsg(e.target.value)}
-              placeholder="Message to volunteers..."
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-emerald-500/50"
+              placeholder="Enter message to broadcast to all field volunteers..."
+              className="flex-1 bg-[#111111] border border-neutral-800 px-4 py-2 text-xs font-mono text-white placeholder:text-neutral-700 focus:outline-none focus:border-emerald-500/50 transition-colors"
               onKeyDown={(e) => e.key === 'Enter' && handleBroadcast()}
             />
             <button
                onClick={handleBroadcast}
                disabled={!broadcastMsg.trim()}
-               className="bg-emerald-500 text-black p-2 rounded-lg hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500 transition-colors flex items-center justify-center w-10"
+               className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/50 px-6 py-2 text-[10px] uppercase tracking-widest font-mono hover:bg-emerald-500/20 disabled:opacity-30 disabled:border-neutral-800 disabled:text-neutral-500 disabled:bg-transparent transition-colors flex items-center gap-2"
             >
-               <Send className="w-4 h-4" />
+               <span>Transmit</span>
+               <Send className="w-3 h-3" />
             </button>
+         </div>
+
+         <div className="flex gap-2 justify-between">
+           <button 
+             onClick={async () => {
+                await createLog('Admin', 'action', 'Global Lockdown Initiated. All zones secured.');
+                await addDoc(collection(db, 'broadcast_messages'), { message: 'GLOBAL LOCKDOWN INITIATED. Volunteers secure perimeters.', createdAt: Date.now() });
+             }}
+             className="bg-rose-950/40 text-rose-400 border border-rose-900/50 px-4 py-1.5 text-[9px] uppercase tracking-widest font-mono hover:bg-rose-900/60 transition-colors rounded flex-1"
+           >
+             Lockdown Protocol
+           </button>
+           <button 
+             onClick={async () => {
+                await createLog('Vision/Drone', 'info', 'Drone sweep dispatched across North and South parking.');
+             }}
+             className="bg-sky-950/40 text-sky-400 border border-sky-900/50 px-4 py-1.5 text-[9px] uppercase tracking-widest font-mono hover:bg-sky-900/60 transition-colors rounded flex-1"
+           >
+             Dispatch Drone Sweep
+           </button>
+           <button 
+             onClick={async () => {
+                await createLog('Admin', 'action', 'All zones reset to nominal baseline density.');
+                zones.forEach(z => updateDoc(doc(db, 'zones', z.id), { density: Math.floor(Math.random() * 20) + 10, emergencyMsg: null }));
+             }}
+             className="bg-emerald-950/40 text-emerald-400 border border-emerald-900/50 px-4 py-1.5 text-[9px] uppercase tracking-widest font-mono hover:bg-emerald-900/60 transition-colors rounded flex-1"
+           >
+             Reset Nominal Baseline
+           </button>
          </div>
       </div>
     </div>

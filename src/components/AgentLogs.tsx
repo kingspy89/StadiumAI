@@ -21,7 +21,7 @@ export default function AgentLogs() {
     const q = query(
       collection(db, 'system_logs'),
       orderBy('createdAt', 'desc'),
-      limit(20)
+      limit(50)
     );
     
     const unsub = onSnapshot(q, (snap) => {
@@ -50,49 +50,49 @@ export default function AgentLogs() {
   };
 
   return (
-    <div className="flex flex-col h-full font-mono overflow-hidden p-5 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(255,255,255,0.02)_2px,rgba(255,255,255,0.02)_4px)]">
-      <div className="flex items-center gap-2 mb-3 shrink-0 pb-3 border-b border-white/5">
+    <div className="flex flex-col h-full bg-[#111111] p-0 border border-neutral-800 rounded-3xl overflow-hidden shrink-0">
+      <div className="flex items-center gap-2 p-4 shrink-0 border-b border-neutral-800 bg-[#0a0a0a]">
         <Terminal className="w-4 h-4 text-emerald-500" />
-        <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-500">Live Orchestrator Feed</h2>
+        <h2 className="text-[11px] font-mono font-bold uppercase tracking-[0.1em] text-emerald-500">System Logs</h2>
         <div className="ml-auto flex gap-1.5">
-           <span className="w-1.5 h-1.5 rounded-full bg-neutral-600"></span>
-           <span className="w-1.5 h-1.5 rounded-full bg-neutral-600"></span>
-           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+           <span className="w-1 h-3 rounded-sm bg-neutral-600"></span>
+           <span className="w-1 h-3 rounded-sm bg-neutral-600"></span>
+           <span className="w-1 h-3 rounded-sm bg-emerald-500 animate-pulse"></span>
         </div>
       </div>
       
-      <div className="flex-1 font-mono text-[11px] md:text-xs space-y-3 text-neutral-500 overflow-y-auto pr-2 custom-scrollbar" ref={scrollRef}>
-        <AnimatePresence>
-          {logs.map((log) => (
-            <motion.div
-              key={log.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex items-start gap-3"
-            >
-              <div className="shrink-0 text-neutral-600 hidden sm:block">[{log.timestamp}]</div>
-              <div className="flex-1 leading-relaxed">
-                <span className={`${getAgentColor(log.agent)} uppercase drop-shadow-[0_0_5px_currentColor]`}>
-                  [{log.agent.substring(0, 4).toUpperCase()}]
-                </span>{' '}
-                <span className={`${log.level === 'error' ? 'text-red-500 font-bold' : log.level === 'warn' ? 'text-yellow-300' : log.level === 'action' ? 'text-emerald-200' : 'text-neutral-300'}`}>
+      <div className="flex-1 overflow-y-auto no-scrollbar bg-[#050505]" ref={scrollRef}>
+        <div className="flex flex-col font-mono text-[10px] md:text-xs text-neutral-500">
+          <AnimatePresence>
+            {logs.map((log) => (
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className={`grid grid-cols-[80px_60px_1fr] items-start gap-2 p-2 border-b border-neutral-800 hover:bg-neutral-900 transition-colors ${log.level === 'error' ? 'bg-rose-950/20' : log.level === 'warn' ? 'bg-amber-950/10' : ''}`}
+              >
+                <div className="text-neutral-600 font-mono tracking-tighter self-stretch border-r border-neutral-800 pr-2 flex items-center">{log.timestamp}</div>
+                <div className={`${getAgentColor(log.agent)} self-stretch border-r border-neutral-800 pr-2 flex items-center justify-center font-bold`}>
+                  {log.agent.substring(0, 4).toUpperCase()}
+                </div>
+                <div className={`leading-relaxed pl-1 ${log.level === 'error' ? 'text-red-500 font-bold' : log.level === 'warn' ? 'text-yellow-300' : log.level === 'action' ? 'text-emerald-300' : 'text-neutral-300'}`}>
                   {log.message}
-                </span>
-                {(log.level === 'warn' || log.level === 'error') && (
-                   <span className="ml-2 inline-flex items-center text-red-500 animate-pulse">
-                     ⚠️ ALERT
-                   </span>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {logs.length === 0 && (
-          <div className="flex gap-2 items-center text-neutral-600 mt-4">
-            <span className="text-emerald-400 font-bold animate-pulse inline-block w-2 bg-emerald-400 h-3"></span> 
-            <span className="italic pl-1">Awaiting signals stream...</span>
-          </div>
-        )}
+                  {(log.level === 'warn' || log.level === 'error') && (
+                     <span className="ml-2 inline-block px-1.5 py-0.5 bg-red-500/20 text-red-500 rounded border border-red-500/30 text-[9px] uppercase tracking-wider animate-pulse">
+                       System Alert
+                     </span>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {logs.length === 0 && (
+            <div className="flex gap-2 items-center text-neutral-600 mt-4 p-4">
+              <span className="text-emerald-400 font-bold animate-pulse inline-block w-2 bg-emerald-400 h-3"></span> 
+              <span className="italic pl-1 font-serif text-xs">Awaiting log stream...</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
